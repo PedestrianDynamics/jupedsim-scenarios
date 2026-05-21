@@ -105,7 +105,8 @@ or scripted pipelines; notebook workflows should stay on the Python API.
 | 0.2.0   | `run_sweep(scenario, axes={...}, seeds=...)`.                      |
 | 0.3.0   | Multiprocess worker pool + `jps-scenarios` CLI.                    |
 | 0.3.1   | Public aliases for helpers shared with Web-Based-Jupedsim.         |
-| 0.3.2   | First PyPI release (this release).                                 |
+| 0.3.2   | First PyPI release.                                                |
+| 0.3.3   | Fix: checkpoints honored without journeys (this release, #8).      |
 | 0.4.0   | Restartable / resumable sweeps, persisted results.                 |
 
 ## License
