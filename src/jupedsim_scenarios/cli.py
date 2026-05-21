@@ -32,7 +32,7 @@ def _build_scenario_from_json(path: pathlib.Path) -> Scenario:
     zipped exports (separate JSON + WKT) use `load_scenario` from Python
     instead.
     """
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if "walkable_area_wkt" not in data:
         raise SystemExit(
             f"{path}: missing 'walkable_area_wkt' — the CLI only accepts "
@@ -62,7 +62,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     scenario = _build_scenario_from_json(scenario_path)
     result = run_scenario(scenario, seed=args.seed)
-    keep_sqlite = bool(args.out)
+    # `keep_sqlite` is only true once the trajectory has been moved to --out.
+    # On the failure path the temp sqlite always gets cleaned, even if --out
+    # was requested — otherwise we'd leak a tempfile the caller can't find.
+    keep_sqlite = False
     try:
         if not result.success:
             print(
@@ -76,6 +79,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(result.sqlite_file, target)
             result.sqlite_file = str(target)
+            keep_sqlite = True
 
         summary = {
             "scenario": str(scenario_path),
@@ -85,7 +89,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
             "total_agents": result.total_agents,
             "agents_evacuated": result.agents_evacuated,
             "agents_remaining": result.agents_remaining,
-            "sqlite_file": result.sqlite_file,
+            # Only report the sqlite path when we're actually keeping the file
+            # (i.e. --out was given). Otherwise it's about to be unlinked.
+            "sqlite_file": result.sqlite_file if keep_sqlite else None,
         }
         # Single-line JSON so callers (CI, scripts) can grep the last line of
         # stdout without colliding with the simulation engine's DEBUG prints.

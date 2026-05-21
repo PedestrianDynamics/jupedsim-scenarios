@@ -233,6 +233,11 @@ def run_sweep(
     # Build every trial's mutated scenario in the parent so user `apply`
     # callables don't need to survive pickling. Each entry carries
     # everything the worker needs except output placement (handled in parent).
+    # NOTE: this materialises N deep-copied Scenarios up front. Fine for
+    # sweeps in the dozens-to-hundreds range; if you're running tens of
+    # thousands of trials and the geometry is heavy, watch memory and
+    # consider running multiple smaller sweeps. Lazy plan generation is
+    # tracked as a follow-up.
     plan: list[tuple[int, dict[str, Any], int | None, Scenario]] = []
     for trial_index, (combo, seed) in enumerate(
         (c, s) for c in combinations for s in seeds_list
