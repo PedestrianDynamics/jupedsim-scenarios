@@ -2,7 +2,7 @@
 
 Python toolkit for running, sweeping, and analyzing
 [JuPedSim](https://www.jupedsim.org/) scenarios authored in the
-[Web-Based JuPedSim](https://github.com/PedestrianDynamics/Web-Based-Jupedsim)
+[Web-Based JuPedSim](https://github.com/PedestrianDynamics/jupedsim-web-community)
 editor.
 
 ## Status
