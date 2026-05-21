@@ -22,24 +22,24 @@ isolation (`.copy()` per trial), per-trial sqlite output naming, and
 result tabulation.
 
 Set ``workers=N`` (or ``workers=0`` for one process per CPU) to run trials
-in parallel via a ``ProcessPoolExecutor``. Mutations are applied in the
-*parent* process so user-supplied ``apply`` lambdas don't have to be
-picklable — only the resulting mutated ``Scenario`` crosses the
-process boundary.
+in parallel via ``joblib.Parallel`` (loky backend). Mutations are applied
+in the *parent* process so user-supplied ``apply`` callables don't need
+any special pickling treatment — only the resulting mutated ``Scenario``
+crosses the process boundary.
 """
 
 from __future__ import annotations
 
 import itertools
 import json
-import multiprocessing
 import os
 import pathlib
 import shutil
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
+
+from joblib import Parallel, delayed
 
 from .runner import Scenario, ScenarioResult, run_scenario
 
@@ -154,16 +154,6 @@ def _validate_axes(
             raise ValueError(f"Axis {name!r} has no values.")
 
 
-def _worker_run_one(scenario: Scenario, seed: int | None) -> ScenarioResult:
-    """Top-level worker entry point.
-
-    Must live at module scope so the `spawn` multiprocessing context can
-    pickle it. The scenario crossing the boundary has already been
-    mutated in the parent process.
-    """
-    return run_scenario(scenario, seed=seed)
-
-
 def _iter_axis_combinations(axes: Mapping[str, Sequence[Any]]):
     if not axes:
         yield {}
@@ -208,10 +198,11 @@ def run_sweep(
         each trial gets its own tempfile (cleaned by ``SweepResult.cleanup``).
     workers
         Number of parallel worker processes. ``1`` runs sequentially in
-        the calling process; ``>1`` uses a ``ProcessPoolExecutor`` with
-        the ``spawn`` start method; ``0`` selects ``os.cpu_count()``.
-        Trial-level mutations are applied in the parent process, so user
-        ``apply`` callables don't need to be picklable.
+        the calling process; ``>1`` dispatches trials via
+        ``joblib.Parallel`` (loky backend); ``0`` selects
+        ``os.cpu_count()``. Trial-level mutations are applied in the
+        parent process, so user ``apply`` callables don't need any
+        special pickling treatment.
     progress
         Optional callback invoked after each trial with
         ``(trial_index, total_trials, axis_values_with_seed)``.
@@ -254,34 +245,23 @@ def run_sweep(
     effective_workers = workers if workers > 0 else (os.cpu_count() or 1)
     use_parallel = effective_workers > 1 and len(plan) > 1
 
-    completed: dict[int, ScenarioResult] = {}
     if use_parallel:
-        ctx = multiprocessing.get_context("spawn")
-        with ProcessPoolExecutor(max_workers=effective_workers, mp_context=ctx) as pool:
-            futures = {
-                pool.submit(_worker_run_one, sc, seed): (idx, combo, seed)
-                for (idx, combo, seed, sc) in plan
-            }
-            done_count = 0
-            for fut in as_completed(futures):
-                idx, combo, seed = futures[fut]
-                completed[idx] = fut.result()
-                done_count += 1
-                if progress is not None:
-                    payload = dict(combo)
-                    payload["seed"] = seed
-                    progress(done_count, total, payload)
+        # Loky backend uses cloudpickle, so closures in user code pickle
+        # cleanly even though we don't rely on that — only the mutated
+        # Scenario crosses the boundary. return_as="list" preserves input
+        # order, matching the sequential path.
+        results = Parallel(n_jobs=effective_workers, backend="loky", return_as="list")(
+            delayed(run_scenario)(sc, seed=seed) for (_idx, _combo, seed, sc) in plan
+        )
     else:
-        for done_count, (idx, combo, seed, sc) in enumerate(plan, start=1):
-            completed[idx] = run_scenario(sc, seed=seed)
-            if progress is not None:
-                payload = dict(combo)
-                payload["seed"] = seed
-                progress(done_count, total, payload)
+        results = [run_scenario(sc, seed=seed) for (_idx, _combo, seed, sc) in plan]
 
     trials: list[Trial] = []
-    for trial_index, combo, seed, _sc in plan:
-        result = completed[trial_index]
+    for (trial_index, combo, seed, _sc), result in zip(plan, results, strict=True):
+        if progress is not None:
+            payload = dict(combo)
+            payload["seed"] = seed
+            progress(trial_index + 1, total, payload)
         if out_dir is not None and result.sqlite_file:
             target = out_dir / f"trial_{trial_index:05d}.sqlite"
             shutil.move(result.sqlite_file, target)
