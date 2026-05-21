@@ -51,8 +51,13 @@ jobs:
       name: pypi
       url: https://pypi.org/p/jupedsim-scenarios
     # `id-token: write` is what OIDC needs to mint the claim PyPI verifies.
+    # Setting permissions at the job level implicitly drops every other
+    # default scope, so we explicitly re-grant `actions: read` for
+    # `download-artifact` (technically optional for same-workflow runs in v4,
+    # but cheap insurance against the action evolving its needs).
     permissions:
       id-token: write
+      actions: read
     steps:
       - uses: actions/download-artifact@v4
         with:
