@@ -1,5 +1,10 @@
 # jupedsim-scenarios
 
+[![CI](https://github.com/PedestrianDynamics/jupedsim-scenarios/actions/workflows/ci.yml/badge.svg)](https://github.com/PedestrianDynamics/jupedsim-scenarios/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/jupedsim-scenarios.svg)](https://pypi.org/project/jupedsim-scenarios/)
+[![Python versions](https://img.shields.io/pypi/pyversions/jupedsim-scenarios.svg)](https://pypi.org/project/jupedsim-scenarios/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Python toolkit for running, sweeping, and analyzing
 [JuPedSim](https://www.jupedsim.org/) scenarios authored in the
 [Web-Based JuPedSim](https://github.com/PedestrianDynamics/jupedsim-web-community)
@@ -7,7 +12,7 @@ editor.
 
 ## Status
 
-Alpha (`0.3.0`). Single-run (`run_scenario`), Monte Carlo sweeps
+Alpha (`0.3.3`). Single-run (`run_scenario`), Monte Carlo sweeps
 (`run_sweep` — now multiprocess), and a `jps-scenarios` CLI are shipped.
 Restartable / resumable sweeps land in 0.4.0.
 
