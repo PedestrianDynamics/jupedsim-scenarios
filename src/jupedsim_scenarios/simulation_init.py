@@ -756,6 +756,34 @@ def _initialize_complete_config(
     )
 
 
+def _build_fallback_checkpoint_chain(
+    ordered_checkpoint_ids: list[str], nearest_exit_id: str
+) -> tuple[dict[str, list[tuple[str, float]]], str]:
+    """Build a path_choices map that chains a list of checkpoints into the nearest exit.
+
+    Used by the fallback (no `journeys_v2`) path to honor checkpoint
+    `waiting_time` and `speed_factor` settings instead of sending every agent
+    straight to the closest exit (the regression that caused
+    jupedsim-scenarios#8). The chain is deterministic — scenario JSON
+    insertion order — so agents in the same distribution take the same
+    route.
+
+    Returns
+    -------
+    (path_choices, first_target_stage)
+        ``path_choices`` keys are origin stages, values are
+        ``[(next_stage, 100.0)]``. ``first_target_stage`` is the first
+        checkpoint (or ``nearest_exit_id`` when there are no checkpoints).
+    """
+    if not ordered_checkpoint_ids:
+        return {}, nearest_exit_id
+    chain = list(ordered_checkpoint_ids) + [nearest_exit_id]
+    path_choices: dict[str, list[tuple[str, float]]] = {}
+    for i in range(len(chain) - 1):
+        path_choices[chain[i]] = [(chain[i + 1], 100.0)]
+    return path_choices, chain[0]
+
+
 def _initialize_with_fallback(
     simulation: jps.Simulation,
     data: dict[str, Any],
@@ -1211,9 +1239,22 @@ def _initialize_with_fallback(
                     ),
                 }
 
+        # Checkpoints declared in the scenario but no journey to chain them
+        # into — route through them in JSON-insertion order before the
+        # nearest exit (jupedsim-scenarios#8). Empty list → straight-to-exit
+        # behavior, preserved.
+        ordered_checkpoint_ids = [
+            cp_id
+            for cp_id, info in direct_steering_info.items()
+            if info.get("stage_type") == "checkpoint"
+        ]
+
         # Add agents with nearest exit assignment — all on global DS journey
         for idx, pos in enumerate(positions):
             nearest_exit_id = _find_nearest_exit(pos, exit_geometries=exit_geometries)
+            path_choices, first_target_stage = _build_fallback_checkpoint_chain(
+                ordered_checkpoint_ids, nearest_exit_id
+            )
 
             agent_radius = float(sampled_radii[idx])
             agent_v0 = float(sampled_v0s[idx])
@@ -1237,17 +1278,17 @@ def _initialize_with_fallback(
             all_positions.append(pos)
             agent_radii[agent_id] = agent_radius
 
-            # Build DS wait info for ALL agents to navigate to nearest exit
+            # Build DS wait info — chain through checkpoints (if any) then exit.
             base_seed = seed + idx * 9973
             target_rng = np.random.RandomState(base_seed)
-            exit_polygon = direct_steering_info[nearest_exit_id]["polygon"]
-            target = _random_point_in_polygon(exit_polygon, target_rng)
+            first_polygon = direct_steering_info[first_target_stage]["polygon"]
+            target = _random_point_in_polygon(first_polygon, target_rng)
             fallback_agent_wait_info[agent_id] = {
                 "mode": "path",
-                "path_choices": {},
+                "path_choices": path_choices,
                 "stage_configs": stage_configs,
                 "current_origin": nearest_exit_id,
-                "current_target_stage": nearest_exit_id,
+                "current_target_stage": first_target_stage,
                 "target": target,
                 "target_assigned": False,
                 "state": "to_target",
@@ -2071,9 +2112,20 @@ def _add_agents(
                         "speed_factor": max(0.0, min(sf, 1.0)),
                     }
 
+                # Same fallback-checkpoint chain logic as the immediate
+                # spawn path above — keep flow-spawned agents in sync.
+                ordered_checkpoint_ids = [
+                    cp_id
+                    for cp_id, info in ds_info.items()
+                    if info.get("stage_type") == "checkpoint"
+                ]
+
                 for idx, pos in enumerate(positions):
                     nearest_exit_id = _find_nearest_exit(
                         pos, exit_geometries=exit_geometries
+                    )
+                    path_choices, first_target_stage = _build_fallback_checkpoint_chain(
+                        ordered_checkpoint_ids, nearest_exit_id
                     )
 
                     agent_radius = float(sampled_radii[idx])
@@ -2096,17 +2148,17 @@ def _add_agents(
                     agent_id = simulation.add_agent(agent_params)
                     agent_radii[agent_id] = agent_radius
 
-                    # Build DS wait info for exit navigation
+                    # Build DS wait info — chain through checkpoints (if any) then exit.
                     base_seed = seed + current_agent_id * 9973
                     target_rng = np.random.RandomState(base_seed)
-                    exit_polygon = ds_info[nearest_exit_id]["polygon"]
-                    target = _random_point_in_polygon(exit_polygon, target_rng)
+                    first_polygon = ds_info[first_target_stage]["polygon"]
+                    target = _random_point_in_polygon(first_polygon, target_rng)
                     agent_wait_info[agent_id] = {
                         "mode": "path",
-                        "path_choices": {},
+                        "path_choices": path_choices,
                         "stage_configs": stage_configs,
                         "current_origin": nearest_exit_id,
-                        "current_target_stage": nearest_exit_id,
+                        "current_target_stage": first_target_stage,
                         "target": target,
                         "target_assigned": False,
                         "state": "to_target",
