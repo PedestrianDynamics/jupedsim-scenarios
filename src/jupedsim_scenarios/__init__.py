@@ -11,5 +11,14 @@ module's contents will migrate to thin wrappers around the upstream API.
 """
 
 from .runner import Scenario, ScenarioResult, load_scenario, run_scenario
+from .sweep import SweepResult, Trial, run_sweep
 
-__all__ = ["Scenario", "ScenarioResult", "load_scenario", "run_scenario"]
+__all__ = [
+    "Scenario",
+    "ScenarioResult",
+    "SweepResult",
+    "Trial",
+    "load_scenario",
+    "run_scenario",
+    "run_sweep",
+]
