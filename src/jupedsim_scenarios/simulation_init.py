@@ -2159,3 +2159,19 @@ def _add_agents(
     }
 
     return all_positions, agent_radii, spawning_info
+
+
+# ---------------------------------------------------------------------------
+# Public aliases
+# ---------------------------------------------------------------------------
+# These helpers were defined with a leading underscore back when this code
+# lived inside the web app and the underscore meant "module-private". After
+# the extraction (jupedsim-scenarios#3) the same helpers are imported across
+# a package boundary by `Web-Based-Jupedsim/backend/services/simulation_service.py`
+# and several of its tests. The underscored names stay (so internal callers
+# don't churn) but these aliases give consumers a stable, conventionally
+# public surface. See jupedsim-scenarios#4.
+random_point_in_polygon = _random_point_in_polygon
+find_nearest_exit = _find_nearest_exit
+sample_agent_values = _sample_agent_values
+clip_exit_to_walkable = _clip_exit_to_walkable

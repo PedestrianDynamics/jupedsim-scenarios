@@ -99,7 +99,8 @@ or scripted pipelines; notebook workflows should stay on the Python API.
 | ------- | ------------------------------------------------------------------ |
 | 0.1.0   | Verbatim extraction of `Scenario` + `run_scenario` from web app.   |
 | 0.2.0   | `run_sweep(scenario, axes={...}, seeds=...)`.                      |
-| 0.3.0   | Multiprocess worker pool + `jps-scenarios` CLI (this release).     |
+| 0.3.0   | Multiprocess worker pool + `jps-scenarios` CLI.                    |
+| 0.3.1   | Public aliases for helpers shared with Web-Based-Jupedsim (this release). |
 | 0.4.0   | Restartable / resumable sweeps, persisted results.                 |
 
 ## License
