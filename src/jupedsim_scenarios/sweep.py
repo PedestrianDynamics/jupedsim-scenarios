@@ -21,20 +21,25 @@ The library owns: cartesian product, seed iteration, per-trial scenario
 isolation (`.copy()` per trial), per-trial sqlite output naming, and
 result tabulation.
 
-Parallel execution is deferred to a follow-up — `workers` is accepted as
-a parameter today but only `workers=1` (sequential) is implemented.
-That keeps the public API stable for the multiprocess work later.
+Set ``workers=N`` (or ``workers=0`` for one process per CPU) to run trials
+in parallel via ``joblib.Parallel`` (loky backend). Mutations are applied
+in the *parent* process so user-supplied ``apply`` callables don't need
+any special pickling treatment — only the resulting mutated ``Scenario``
+crosses the process boundary.
 """
 
 from __future__ import annotations
 
 import itertools
 import json
+import os
 import pathlib
 import shutil
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+
+from joblib import Parallel, delayed
 
 from .runner import Scenario, ScenarioResult, run_scenario
 
@@ -192,9 +197,12 @@ def run_sweep(
         with a deterministic name (``trial_<index>.sqlite``). If omitted,
         each trial gets its own tempfile (cleaned by ``SweepResult.cleanup``).
     workers
-        Reserved for the multiprocess implementation. Only ``workers=1``
-        (sequential) is supported in this release; any other value raises
-        ``NotImplementedError``.
+        Number of parallel worker processes. ``1`` runs sequentially in
+        the calling process; ``>1`` dispatches trials via
+        ``joblib.Parallel`` (loky backend); ``0`` selects
+        ``os.cpu_count()``. Trial-level mutations are applied in the
+        parent process, so user ``apply`` callables don't need any
+        special pickling treatment.
     progress
         Optional callback invoked after each trial with
         ``(trial_index, total_trials, axis_values_with_seed)``.
@@ -203,12 +211,8 @@ def run_sweep(
     -------
     SweepResult
     """
-    if workers != 1:
-        raise NotImplementedError(
-            "Parallel sweeps (workers > 1) are not yet implemented. "
-            "Run sequentially with workers=1 for now; multiprocess support "
-            "lands in a follow-up release."
-        )
+    if workers < 0:
+        raise ValueError(f"workers must be >= 0 (0 = all CPUs), got {workers!r}")
 
     axes = dict(axes or {})
     apply = dict(apply or {})
@@ -226,15 +230,43 @@ def run_sweep(
         out_dir = pathlib.Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    trials: list[Trial] = []
+    # Build every trial's mutated scenario in the parent so user `apply`
+    # callables don't need to survive pickling. Each entry carries
+    # everything the worker needs except output placement (handled in parent).
+    # NOTE: this materialises N deep-copied Scenarios up front. Fine for
+    # sweeps in the dozens-to-hundreds range; if you're running tens of
+    # thousands of trials and the geometry is heavy, watch memory and
+    # consider running multiple smaller sweeps. Lazy plan generation is
+    # tracked as a follow-up.
+    plan: list[tuple[int, dict[str, Any], int | None, Scenario]] = []
     for trial_index, (combo, seed) in enumerate(
         (c, s) for c in combinations for s in seeds_list
     ):
         trial_scenario = scenario.copy()
         for name, value in combo.items():
             apply[name](trial_scenario, value)
+        plan.append((trial_index, dict(combo), seed, trial_scenario))
 
-        result = run_scenario(trial_scenario, seed=seed)
+    effective_workers = workers if workers > 0 else (os.cpu_count() or 1)
+    use_parallel = effective_workers > 1 and len(plan) > 1
+
+    if use_parallel:
+        # Loky backend uses cloudpickle, so closures in user code pickle
+        # cleanly even though we don't rely on that — only the mutated
+        # Scenario crosses the boundary. return_as="list" preserves input
+        # order, matching the sequential path.
+        results = Parallel(n_jobs=effective_workers, backend="loky", return_as="list")(
+            delayed(run_scenario)(sc, seed=seed) for (_idx, _combo, seed, sc) in plan
+        )
+    else:
+        results = [run_scenario(sc, seed=seed) for (_idx, _combo, seed, sc) in plan]
+
+    trials: list[Trial] = []
+    for (trial_index, combo, seed, _sc), result in zip(plan, results, strict=True):
+        if progress is not None:
+            payload = dict(combo)
+            payload["seed"] = seed
+            progress(trial_index + 1, total, payload)
         if out_dir is not None and result.sqlite_file:
             target = out_dir / f"trial_{trial_index:05d}.sqlite"
             shutil.move(result.sqlite_file, target)
@@ -242,16 +274,11 @@ def run_sweep(
         trials.append(
             Trial(
                 index=trial_index,
-                axis_values=dict(combo),
+                axis_values=combo,
                 seed=seed if seed is not None else result.seed,
                 result=result,
             )
         )
-
-        if progress is not None:
-            payload = dict(combo)
-            payload["seed"] = seed
-            progress(trial_index + 1, total, payload)
 
     return SweepResult(
         trials=trials,

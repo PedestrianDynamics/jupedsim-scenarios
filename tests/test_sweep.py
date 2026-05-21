@@ -119,9 +119,36 @@ def test_sweep_result_save_roundtrip(tmp_path):
     assert data["trials"][0]["axis_values"] == {"v0": 1.2}
 
 
-def test_workers_greater_than_one_raises(corridor_scenario):
-    with pytest.raises(NotImplementedError, match="workers > 1"):
-        run_sweep(corridor_scenario, workers=2)
+def test_workers_negative_raises(corridor_scenario):
+    with pytest.raises(ValueError, match="workers must be >= 0"):
+        run_sweep(corridor_scenario, workers=-1)
+
+
+def test_run_sweep_parallel_matches_sequential(corridor_scenario, tmp_path):
+    """Two-worker run produces the same per-trial outcomes as the sequential path."""
+    seq = run_sweep(
+        corridor_scenario,
+        seeds=[1, 2, 3],
+        output_dir=tmp_path / "seq",
+        workers=1,
+    )
+    par = run_sweep(
+        corridor_scenario,
+        seeds=[1, 2, 3],
+        output_dir=tmp_path / "par",
+        workers=2,
+    )
+    try:
+        # Both runs return trials in plan order, indexed identically.
+        assert [t.index for t in seq.trials] == [0, 1, 2]
+        assert [t.index for t in par.trials] == [0, 1, 2]
+        # Determinism check: same seed → same evacuation_time on a deterministic scenario.
+        seq_times = [t.result.evacuation_time for t in seq.trials]
+        par_times = [t.result.evacuation_time for t in par.trials]
+        assert seq_times == par_times
+    finally:
+        seq.cleanup()
+        par.cleanup()
 
 
 # --- end-to-end ------------------------------------------------------------
