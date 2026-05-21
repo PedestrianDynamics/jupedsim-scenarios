@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jupedsim-scenarios"
+version = "0.1.0"
+description = "Run, sweep, and analyze JuPedSim scenarios from the web-app JSON schema."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Pedestrian Dynamics" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "jupedsim>=1.4",
+    "shapely>=2.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pedpy>=1.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+jps-scenarios = "jupedsim_scenarios.cli:main"
+
+[project.urls]
+Repository = "https://github.com/PedestrianDynamics/jupedsim-scenarios"
+Issues = "https://github.com/PedestrianDynamics/jupedsim-scenarios/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+jupedsim_scenarios = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Silenced for the verbatim Sprint-1 port from Web-Based-Jupedsim:
+#   B007 — `for i in range(N)`-style unused loop variables (pervasive)
+#   B904 — bare `raise Exception(...)` inside except handlers
+# Both will be tightened up in a follow-up once the code is ours stylistically.
+ignore = ["E501", "B007", "B904"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
