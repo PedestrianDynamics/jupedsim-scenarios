@@ -21,18 +21,23 @@ The library owns: cartesian product, seed iteration, per-trial scenario
 isolation (`.copy()` per trial), per-trial sqlite output naming, and
 result tabulation.
 
-Parallel execution is deferred to a follow-up — `workers` is accepted as
-a parameter today but only `workers=1` (sequential) is implemented.
-That keeps the public API stable for the multiprocess work later.
+Set ``workers=N`` (or ``workers=0`` for one process per CPU) to run trials
+in parallel via a ``ProcessPoolExecutor``. Mutations are applied in the
+*parent* process so user-supplied ``apply`` lambdas don't have to be
+picklable — only the resulting mutated ``Scenario`` crosses the
+process boundary.
 """
 
 from __future__ import annotations
 
 import itertools
 import json
+import multiprocessing
+import os
 import pathlib
 import shutil
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -149,6 +154,16 @@ def _validate_axes(
             raise ValueError(f"Axis {name!r} has no values.")
 
 
+def _worker_run_one(scenario: Scenario, seed: int | None) -> ScenarioResult:
+    """Top-level worker entry point.
+
+    Must live at module scope so the `spawn` multiprocessing context can
+    pickle it. The scenario crossing the boundary has already been
+    mutated in the parent process.
+    """
+    return run_scenario(scenario, seed=seed)
+
+
 def _iter_axis_combinations(axes: Mapping[str, Sequence[Any]]):
     if not axes:
         yield {}
@@ -192,9 +207,11 @@ def run_sweep(
         with a deterministic name (``trial_<index>.sqlite``). If omitted,
         each trial gets its own tempfile (cleaned by ``SweepResult.cleanup``).
     workers
-        Reserved for the multiprocess implementation. Only ``workers=1``
-        (sequential) is supported in this release; any other value raises
-        ``NotImplementedError``.
+        Number of parallel worker processes. ``1`` runs sequentially in
+        the calling process; ``>1`` uses a ``ProcessPoolExecutor`` with
+        the ``spawn`` start method; ``0`` selects ``os.cpu_count()``.
+        Trial-level mutations are applied in the parent process, so user
+        ``apply`` callables don't need to be picklable.
     progress
         Optional callback invoked after each trial with
         ``(trial_index, total_trials, axis_values_with_seed)``.
@@ -203,12 +220,8 @@ def run_sweep(
     -------
     SweepResult
     """
-    if workers != 1:
-        raise NotImplementedError(
-            "Parallel sweeps (workers > 1) are not yet implemented. "
-            "Run sequentially with workers=1 for now; multiprocess support "
-            "lands in a follow-up release."
-        )
+    if workers < 0:
+        raise ValueError(f"workers must be >= 0 (0 = all CPUs), got {workers!r}")
 
     axes = dict(axes or {})
     apply = dict(apply or {})
@@ -226,15 +239,49 @@ def run_sweep(
         out_dir = pathlib.Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    trials: list[Trial] = []
+    # Build every trial's mutated scenario in the parent so user `apply`
+    # callables don't need to survive pickling. Each entry carries
+    # everything the worker needs except output placement (handled in parent).
+    plan: list[tuple[int, dict[str, Any], int | None, Scenario]] = []
     for trial_index, (combo, seed) in enumerate(
         (c, s) for c in combinations for s in seeds_list
     ):
         trial_scenario = scenario.copy()
         for name, value in combo.items():
             apply[name](trial_scenario, value)
+        plan.append((trial_index, dict(combo), seed, trial_scenario))
 
-        result = run_scenario(trial_scenario, seed=seed)
+    effective_workers = workers if workers > 0 else (os.cpu_count() or 1)
+    use_parallel = effective_workers > 1 and len(plan) > 1
+
+    completed: dict[int, ScenarioResult] = {}
+    if use_parallel:
+        ctx = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=effective_workers, mp_context=ctx) as pool:
+            futures = {
+                pool.submit(_worker_run_one, sc, seed): (idx, combo, seed)
+                for (idx, combo, seed, sc) in plan
+            }
+            done_count = 0
+            for fut in as_completed(futures):
+                idx, combo, seed = futures[fut]
+                completed[idx] = fut.result()
+                done_count += 1
+                if progress is not None:
+                    payload = dict(combo)
+                    payload["seed"] = seed
+                    progress(done_count, total, payload)
+    else:
+        for done_count, (idx, combo, seed, sc) in enumerate(plan, start=1):
+            completed[idx] = run_scenario(sc, seed=seed)
+            if progress is not None:
+                payload = dict(combo)
+                payload["seed"] = seed
+                progress(done_count, total, payload)
+
+    trials: list[Trial] = []
+    for trial_index, combo, seed, _sc in plan:
+        result = completed[trial_index]
         if out_dir is not None and result.sqlite_file:
             target = out_dir / f"trial_{trial_index:05d}.sqlite"
             shutil.move(result.sqlite_file, target)
@@ -242,16 +289,11 @@ def run_sweep(
         trials.append(
             Trial(
                 index=trial_index,
-                axis_values=dict(combo),
+                axis_values=combo,
                 seed=seed if seed is not None else result.seed,
                 result=result,
             )
         )
-
-        if progress is not None:
-            payload = dict(combo)
-            payload["seed"] = seed
-            progress(trial_index + 1, total, payload)
 
     return SweepResult(
         trials=trials,

@@ -7,9 +7,9 @@ editor.
 
 ## Status
 
-Alpha (`0.2.0`). Sprint-1 shipped single-run (`run_scenario`); Sprint-2
-ships Monte Carlo sweeps (`run_sweep`). Multiprocess workers and the
-`jps-scenarios` CLI land in later releases.
+Alpha (`0.3.0`). Single-run (`run_scenario`), Monte Carlo sweeps
+(`run_sweep` — now multiprocess), and a `jps-scenarios` CLI are shipped.
+Restartable / resumable sweeps land in 0.4.0.
 
 ## Install
 
@@ -72,17 +72,34 @@ axis's `apply` function on an isolated `.copy()` of the base scenario,
 runs the simulation, and tabulates the results. Anything the
 `Scenario.set_*` mutators can change is fair game for sweeping.
 
-Today `run_sweep` runs trials sequentially. The `workers=` parameter is
-reserved for the multiprocess implementation that lands in the next
-release.
+Pass ``workers=N`` (or ``workers=0`` for one worker per CPU) to run
+trials in parallel:
+
+```python
+sweep = run_sweep(base, axes=..., apply=..., seeds=range(40, 50), workers=4)
+```
+
+Mutations are applied in the calling process — only the resulting
+mutated `Scenario` crosses the process boundary, so user `apply`
+lambdas don't need to be picklable.
+
+## Command line
+
+```
+jps-scenarios run scenario.json --seed 42 --out trajectory.sqlite
+```
+
+Runs a single scenario and prints a one-line JSON summary
+(`evacuation_time`, agent counts, `sqlite_file`) to stdout. Useful in CI
+or scripted pipelines; notebook workflows should stay on the Python API.
 
 ## Roadmap
 
 | Release | Scope                                                              |
 | ------- | ------------------------------------------------------------------ |
 | 0.1.0   | Verbatim extraction of `Scenario` + `run_scenario` from web app.   |
-| 0.2.0   | `run_sweep(scenario, axes={...}, seeds=...)` (this release).       |
-| 0.3.0   | Multiprocess worker pool + `jps-scenarios` CLI.                    |
+| 0.2.0   | `run_sweep(scenario, axes={...}, seeds=...)`.                      |
+| 0.3.0   | Multiprocess worker pool + `jps-scenarios` CLI (this release).     |
 | 0.4.0   | Restartable / resumable sweeps, persisted results.                 |
 
 ## License
