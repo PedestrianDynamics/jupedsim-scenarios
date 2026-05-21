@@ -50,12 +50,19 @@ AxisApplyFn = Callable[[Scenario, Any], None]
 
 @dataclass
 class Trial:
-    """One realised cell of the sweep: axis values + seed + result."""
+    """One realised cell of the sweep: axis values + seed + result.
+
+    `extras` is an opaque per-trial payload. `run_sweep` always leaves it
+    `None`; `run_sweep_from_factory` lets the factory attach anything it
+    likes (geometry, label, computed metadata) so downstream code can
+    pick it up via `for t in sweep.trials: t.extras`.
+    """
 
     index: int
     axis_values: dict[str, Any]
     seed: int
     result: ScenarioResult
+    extras: Any = None
 
     @property
     def success(self) -> bool:
@@ -283,5 +290,159 @@ def run_sweep(
     return SweepResult(
         trials=trials,
         axes={k: list(v) for k, v in axes.items()},
+        seeds=seeds_list,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Factory-style sweep
+# ---------------------------------------------------------------------------
+# A scenario factory takes a trial parameters mapping and returns either a
+# fresh Scenario or a (Scenario, extras) tuple. `extras` is opaque to the
+# library — geometry, labels, anything the caller wants to keep around
+# next to the result.
+ScenarioFactoryFn = Callable[[Mapping[str, Any]], "Scenario | tuple[Scenario, Any]"]
+
+
+def _normalize_factory_return(returned: Any) -> tuple[Scenario, Any]:
+    """Accept either a Scenario or a (Scenario, extras) tuple."""
+    if isinstance(returned, tuple):
+        if len(returned) != 2:
+            raise ValueError(
+                "scenario factory must return either a Scenario or a "
+                f"(Scenario, extras) 2-tuple; got a tuple of length {len(returned)}"
+            )
+        scenario, extras = returned
+    else:
+        scenario, extras = returned, None
+    if not isinstance(scenario, Scenario):
+        raise TypeError(
+            "scenario factory must return a Scenario (optionally paired "
+            f"with an extras value); got {type(scenario).__name__}"
+        )
+    return scenario, extras
+
+
+def run_sweep_from_factory(
+    factory: ScenarioFactoryFn,
+    *,
+    trials: Iterable[Mapping[str, Any]],
+    seeds: Iterable[int | None] = (None,),
+    output_dir: str | pathlib.Path | None = None,
+    workers: int = 1,
+    progress: Callable[[int, int, dict], None] | None = None,
+) -> SweepResult:
+    """Run one simulation per (trial-params, seed) pair, building each
+    scenario fresh via a user-supplied factory.
+
+    Use this when the scenario can't be expressed as a single base
+    mutated by axis values — typically because the geometry itself
+    depends on trial parameters (e.g. a loop track whose radius scales
+    with agent count). Each call to ``factory(trial_params)`` is
+    expected to construct a fresh ``Scenario``.
+
+    Parameters
+    ----------
+    factory
+        Callable ``(trial_params) -> Scenario`` or
+        ``(trial_params) -> (Scenario, extras)``. Called once per
+        trial-parameters dict in the parent process; the resulting
+        Scenario is then pickled to a worker for the actual simulation.
+        ``extras`` (if returned) is attached to ``Trial.extras`` for the
+        caller to read after the sweep completes.
+    trials
+        Iterable of trial-parameters mappings. The mapping's keys
+        become the DataFrame columns when you call
+        ``SweepResult.to_dataframe()``, so name them meaningfully.
+    seeds
+        Seeds to replicate every trial-params combination over.
+        Default ``(None,)`` ⇒ one run per trial-params dict using the
+        seed embedded in the factory's Scenario.
+    output_dir, workers, progress
+        Same semantics as ``run_sweep``.
+
+    Returns
+    -------
+    SweepResult
+    """
+    if workers < 0:
+        raise ValueError(f"workers must be >= 0 (0 = all CPUs), got {workers!r}")
+
+    seeds_list = list(seeds)
+    if not seeds_list:
+        raise ValueError(
+            "`seeds` must contain at least one value (use [None] for the "
+            "scenario's own seed)."
+        )
+
+    trials_list = [dict(t) for t in trials]
+    if not trials_list:
+        raise ValueError("`trials` must contain at least one trial-parameters mapping.")
+
+    out_dir: pathlib.Path | None = None
+    if output_dir is not None:
+        out_dir = pathlib.Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Materialise every trial's Scenario in the parent. Same memory-vs-
+    # latency tradeoff as run_sweep (see note in run_sweep); lazy
+    # construction is a follow-up.
+    plan: list[tuple[int, dict[str, Any], int | None, Scenario, Any]] = []
+    for trial_index, (trial_params, seed) in enumerate(
+        (t, s) for t in trials_list for s in seeds_list
+    ):
+        scenario, extras = _normalize_factory_return(factory(trial_params))
+        plan.append((trial_index, trial_params, seed, scenario, extras))
+
+    total = len(plan)
+    effective_workers = workers if workers > 0 else (os.cpu_count() or 1)
+    use_parallel = effective_workers > 1 and total > 1
+
+    if use_parallel:
+        results = Parallel(n_jobs=effective_workers, backend="loky", return_as="list")(
+            delayed(run_scenario)(sc, seed=seed)
+            for (_idx, _params, seed, sc, _extras) in plan
+        )
+    else:
+        results = [
+            run_scenario(sc, seed=seed)
+            for (_idx, _params, seed, sc, _extras) in plan
+        ]
+
+    out_trials: list[Trial] = []
+    for (trial_index, trial_params, seed, _sc, extras), result in zip(
+        plan, results, strict=True
+    ):
+        if progress is not None:
+            payload = dict(trial_params)
+            payload["seed"] = seed
+            progress(trial_index + 1, total, payload)
+        if out_dir is not None and result.sqlite_file:
+            target = out_dir / f"trial_{trial_index:05d}.sqlite"
+            shutil.move(result.sqlite_file, target)
+            result.sqlite_file = str(target)
+        out_trials.append(
+            Trial(
+                index=trial_index,
+                axis_values=trial_params,
+                seed=seed if seed is not None else result.seed,
+                result=result,
+                extras=extras,
+            )
+        )
+
+    # Reconstruct an axis-name → distinct-values map from the trial-params
+    # dicts for SweepResult.axes (matches what run_sweep stores). Insertion
+    # order is preserved on both the keys and their value lists.
+    axes_summary: dict[str, list[Any]] = {}
+    for t in trials_list:
+        for k, v in t.items():
+            bucket = axes_summary.setdefault(k, [])
+            if v not in bucket:
+                bucket.append(v)
+
+    return SweepResult(
+        trials=out_trials,
+        axes=axes_summary,
         seeds=seeds_list,
     )

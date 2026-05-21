@@ -92,6 +92,35 @@ Mutations are applied in the calling process — only the resulting
 mutated `Scenario` crosses the process boundary, so user `apply`
 lambdas don't need to be picklable.
 
+### Factory-style sweeps
+
+If the scenario can't be expressed as one base mutated by axis values
+— typically because the geometry itself depends on the trial parameters
+— use `run_sweep_from_factory` instead. Each trial parameter dict is
+handed to your factory; the factory builds a fresh `Scenario` and
+optionally returns a payload that rides along on `Trial.extras`:
+
+```python
+from jupedsim_scenarios import run_sweep_from_factory
+
+def build_loop(params):
+    scenario, geometry = build_loop_scenario(
+        num_agents=params["num_agents"],
+        spacing=TRACK_LENGTH / params["num_agents"],
+    )
+    return scenario, geometry  # extras travel with the trial
+
+sweep = run_sweep_from_factory(
+    build_loop,
+    trials=[{"num_agents": n} for n in (50, 100, 200, 400)],
+    seeds=[42],
+    workers=4,
+)
+df = sweep.to_dataframe()           # one row per trial; "num_agents" is a column
+for t in sweep.trials:
+    geometry = t.extras             # whatever the factory returned alongside
+```
+
 ## Command line
 
 ```
@@ -111,7 +140,8 @@ or scripted pipelines; notebook workflows should stay on the Python API.
 | 0.3.0   | Multiprocess worker pool + `jps-scenarios` CLI.                    |
 | 0.3.1   | Public aliases for helpers shared with Web-Based-Jupedsim.         |
 | 0.3.2   | First PyPI release.                                                |
-| 0.3.3   | Fix: checkpoints honored without journeys (this release, #8).      |
+| 0.3.3   | Fix: checkpoints honored without journeys (#8).                    |
+| 0.3.4   | `run_sweep_from_factory` for factory-style sweeps (this release, #11). |
 | 0.4.0   | Restartable / resumable sweeps, persisted results.                 |
 
 ## License
