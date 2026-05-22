@@ -643,6 +643,108 @@ def build_agent_path_state(
     }
 
 
+def _migrate_legacy_journeys_to_v2(data: dict[str, Any]) -> None:
+    """Translate legacy ``journeys``+``transitions`` into ``journeys_v2`` and
+    per-distribution ``journey_weights``.
+
+    The pre-#376 schema looked like::
+
+        data["journeys"] = [
+            {"id": "j0", "stages": ["dist_0", "checkpoint_0", "exit_0"]},
+            ...
+        ]
+        data["transitions"] = [
+            {"from": "dist_0", "to": "exit_0", "journey_id": "j0"},
+            ...
+        ]
+
+    journeys_v2 doesn't store the distribution in ``sequence`` — start areas
+    are recorded as ``journey_weights`` on the distribution itself. This
+    helper rewrites ``data`` in place so the rest of
+    ``initialize_simulation_from_json`` only has to handle the v2 path.
+
+    No-op when ``journeys_v2`` is already present or no legacy ``journeys``
+    are defined.
+    """
+    legacy = data.get("journeys") or []
+    if not legacy or data.get("journeys_v2"):
+        return
+
+    dist_keys = set((data.get("distributions") or {}).keys())
+
+    # Split each legacy journey's stages into (feeders=distributions,
+    # sequence=non-distributions). The journey's "real" stages — what v2
+    # expects in `sequence` — are everything that isn't a distribution.
+    feeders_by_journey: dict[str, list[str]] = {}
+    sequence_by_journey: dict[str, list[str]] = {}
+    for j in legacy:
+        jid = j.get("id")
+        if not jid:
+            continue
+        stages = list(j.get("stages") or [])
+        feeders_by_journey[jid] = [s for s in stages if s in dist_keys]
+        sequence_by_journey[jid] = [s for s in stages if s not in dist_keys]
+
+    # Transitions can also encode distribution → journey edges that don't
+    # appear in the journey's stages list. Pick those up too.
+    for t in data.get("transitions") or []:
+        jid = t.get("journey_id")
+        src = t.get("from")
+        if jid and src in dist_keys and jid in feeders_by_journey:
+            if src not in feeders_by_journey[jid]:
+                feeders_by_journey[jid].append(src)
+
+    # If a single legacy journey is defined and no distribution is explicitly
+    # paired with it, assume every distribution feeds it. This matches the
+    # convention used by RiMEA 07 / 13 and other simple "one journey, one
+    # exit" scenarios.
+    if len(legacy) == 1 and not any(feeders_by_journey.values()):
+        only_jid = legacy[0].get("id")
+        if only_jid:
+            feeders_by_journey[only_jid] = list(dist_keys)
+
+    # Build journeys_v2 entries (skip journeys that ended up with an empty
+    # sequence — nothing to route to).
+    journeys_v2: list[dict[str, Any]] = []
+    for jid, sequence in sequence_by_journey.items():
+        if not sequence:
+            continue
+        journeys_v2.append(
+            {
+                "id": jid,
+                "name": jid,
+                "color": "#888888",
+                "sequence": sequence,
+            }
+        )
+
+    if not journeys_v2:
+        # Nothing to migrate — leave data untouched so the fallback can fire
+        # with its existing diagnostic message.
+        return
+
+    # Distribute weight per distribution. A distribution that feeds N
+    # journeys gets 100/N weight on each — legacy didn't support split
+    # weights, but spreading evenly is the most natural interpretation
+    # when one source appears in multiple journeys.
+    weights_by_dist: dict[str, list[dict[str, Any]]] = {}
+    for jid, feeders in feeders_by_journey.items():
+        if not sequence_by_journey.get(jid):
+            continue  # journey has no real targets, skip
+        for dk in feeders:
+            weights_by_dist.setdefault(dk, []).append({"journey_id": jid, "weight": 100.0})
+    for weights in weights_by_dist.values():
+        if len(weights) > 1:
+            even = 100.0 / len(weights)
+            for w in weights:
+                w["weight"] = even
+
+    data["journeys_v2"] = journeys_v2
+    for dk, weights in weights_by_dist.items():
+        if dk in data.get("distributions", {}):
+            data["distributions"][dk]["journey_weights"] = weights
+
+
 def initialize_simulation_from_json(
     json_path: str,
     simulation: jps.Simulation,
@@ -663,6 +765,14 @@ def initialize_simulation_from_json(
     # Only require exits - everything else can be fallback
     if "exits" not in data or not data["exits"]:
         raise ValueError("At least one exit is required in JSON configuration")
+
+    # Translate the legacy journeys+transitions schema into journeys_v2 +
+    # per-distribution journey_weights so scenarios authored before the
+    # journeys_v2 migration (#376) still route correctly. See issue #13:
+    # without this shim, every legacy scenario silently falls through to the
+    # nearest-exit fallback, bypassing checkpoints, multi-exit routing, and
+    # stage waiting times.
+    _migrate_legacy_journeys_to_v2(data)
 
     # Check what's missing and use fallback logic
     needs_fallback = False

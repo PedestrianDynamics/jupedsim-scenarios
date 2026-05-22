@@ -141,7 +141,8 @@ or scripted pipelines; notebook workflows should stay on the Python API.
 | 0.3.1   | Public aliases for helpers shared with Web-Based-Jupedsim.         |
 | 0.3.2   | First PyPI release.                                                |
 | 0.3.3   | Fix: checkpoints honored without journeys (#8).                    |
-| 0.3.4   | `run_sweep_from_factory` for factory-style sweeps (this release, #11). |
+| 0.3.4   | `run_sweep_from_factory` for factory-style sweeps (#11).           |
+| 0.3.5   | Legacy `journeys`+`transitions` schema shim (this release, #13).   |
 | 0.4.0   | Restartable / resumable sweeps, persisted results.                 |
 
 ## License
