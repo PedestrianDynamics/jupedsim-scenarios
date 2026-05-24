@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import logging
 import math
 import random
 import subprocess
@@ -13,6 +14,8 @@ import numpy as np
 import pedpy
 import shapely
 from shapely.geometry import Point, Polygon
+
+logger = logging.getLogger(__name__)
 
 required_packages = [
     ("jupedsim", "jupedsim"),
@@ -37,12 +40,10 @@ def install_if_missing(pip_name: str, import_name: str | None = None):
     """Pip install missing packages."""
     import_name = import_name or pip_name
     if not is_package_installed(import_name):
-        print(f"Installing {pip_name}...")
+        logger.info(f"Installing {pip_name}...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
     else:
-        print(f"{pip_name} already installed.")
-
-
+        logger.info(f"{pip_name} already installed.")
 def create_agent_parameters(
     model_type: str,
     position: tuple,
@@ -686,7 +687,7 @@ def initialize_simulation_from_json(
         data["checkpoints"] = {}
 
     if needs_fallback:
-        print(f"Using fallback logic: {', '.join(fallback_reasons)}")
+        logger.info(f"Using fallback logic: {', '.join(fallback_reasons)}")
 
         result_data, positions, agent_radii, spawning_info = _initialize_with_fallback(
             simulation, data, walkable_area, seed, model_type, global_parameters
@@ -809,7 +810,7 @@ def _initialize_with_fallback(
         for dist_id, dist_data in data["distributions"].items():
             if "parameters" in dist_data:
                 params = dist_data["parameters"]
-                print(f"Processing with parameters: {params}")
+                logger.info(f"Processing with parameters: {params}")
                 if isinstance(params, str):
                     try:
                         params = json.loads(params)
@@ -835,11 +836,9 @@ def _initialize_with_fallback(
         )
         default_n_agents = getattr(global_parameters, "number", default_n_agents)
 
-    print(
+    logger.info(
         f"Using default parameters: v0={default_v0}, radius={default_agent_radius}, n_agents={default_n_agents}"
     )
-
-    print()
     # Step 1: Add exits to simulation
     stage_map = {}
     exits = []
@@ -985,11 +984,10 @@ def _initialize_with_fallback(
                     distribution_params.append(dist_params)
                     total_agents += int(dist_params["number"])
 
-                    print(f"Distribution {dist_id}: {dist_params}")
-
+                    logger.info(f"Distribution {dist_id}: {dist_params}")
     # Fallback: use walkable area if no valid distributions
     if not distributions:
-        print("No valid distributions found; using walkable area as fallback")
+        logger.info("No valid distributions found; using walkable area as fallback")
         distributions = [walkable_area.polygon]
         distribution_params = [
             {
@@ -1055,7 +1053,7 @@ def _initialize_with_fallback(
         clean_dist_area = shapely.intersection(clean_dist_area, walkable_area.polygon)
 
         if clean_dist_area.is_empty:
-            print(f"Warning: Distribution area {i} is outside walkable area")
+            logger.warning(f"Distribution area {i} is outside walkable area")
             continue
 
         if use_flow_spawning:
@@ -1073,7 +1071,7 @@ def _initialize_with_fallback(
                 n_agents = max(1, int(max_capacity * percentage / 100))
 
             if n_agents <= 0:
-                print(f"Warning: No agents fit in distribution {i}")
+                logger.warning(f"No agents fit in distribution {i}")
                 continue
 
             # Get flow parameters
@@ -1121,10 +1119,9 @@ def _initialize_with_fallback(
                 }
             )
 
-            print(
+            logger.info(
                 f"Flow spawning: Distribution {i} - {n_agents} agents over {flow_duration}s"
             )
-
         else:
             # Store for immediate spawning
             immediate_spawn_distributions.append(
@@ -1165,7 +1162,7 @@ def _initialize_with_fallback(
                 f"Consider: 1) Making the distribution area larger, 2) Reducing the number of agents, "
                 f"3) Increasing distance between agents, or 4) Checking for obstacles in the area."
             )
-            print(f"ERROR: {error_msg}")
+            logger.error(f"{error_msg}")
             raise Exception(error_msg)
 
         # Check if this distribution uses premovement
@@ -1197,21 +1194,19 @@ def _initialize_with_fallback(
             if premovement_seed is None:
                 premovement_seed = seed + spawn_data["index"] + 1000
 
-            print(
+            logger.info(
                 f"Generating premovement times: {dist_type} with params {dist_params}, seed={premovement_seed}"
             )
-
             distribution = create_premovement_distribution(
                 dist_type, dist_params, premovement_seed
             )
             agent_premovement_times = distribution.sample(len(positions))
 
-            print(
+            logger.info(
                 f"Premovement times stats - Min: {agent_premovement_times.min():.2f}s, "
                 f"Max: {agent_premovement_times.max():.2f}s, "
                 f"Mean: {agent_premovement_times.mean():.2f}s"
             )
-
         # Sample per-agent radius and v0
         rng = np.random.RandomState(seed + spawn_data["index"])
         sampled_radii, sampled_v0s = _sample_agent_values(
@@ -1334,10 +1329,9 @@ def _initialize_with_fallback(
         "global_ds_stage_id": global_ds_stage_id,
     }
 
-    print(
+    logger.info(
         f"Added {len(all_positions)} agents using fallback logic (immediate), prepared {len(flow_distributions)} flow sources"
     )
-
     return (
         {
             "stage_map": stage_map,
@@ -1515,10 +1509,9 @@ def _add_stages(
             "max_throughput": cp_data.get("max_throughput", 1.0),
         }
         stage_map[cp_id] = ds_stage
-        print(
+        logger.info(
             f"Added DirectSteeringStage for checkpoint {cp_id}: time={cp_data.get('waiting_time', 0)}s"
         )
-
     # Zones are geometry modifiers and intentionally omitted from stage_map.
     for zone_id, zone_data in data.get("zones", {}).items():
         coordinates = zone_data.get("coordinates", [])
@@ -1623,9 +1616,8 @@ def _process_distributions(
             "percentage": params.get("percentage", None),
         }
 
-        print(f"DEBUG: Distribution {dist_id} RAW params from JSON: {params}")
-        print(f"DEBUG: Distribution {dist_id} processed params: {dist_params[dist_id]}")
-
+        logger.debug(f"Distribution {dist_id} RAW params from JSON: {params}")
+        logger.debug(f"Distribution {dist_id} processed params: {dist_params[dist_id]}")
     return dist_geom, dist_params
 
 
@@ -1763,11 +1755,10 @@ def _add_agents(
     journeys_per_distribution = journey_data["journeys_per_distribution"]
 
     for dist_key, polygon in dist_geom.items():
-        print(f"DEBUG: Processing distribution with dist_key = '{dist_key}'")
-        print(
-            f"DEBUG: Available journeys_per_distribution keys = {list(journeys_per_distribution.keys())}"
+        logger.debug(f"Processing distribution with dist_key = '{dist_key}'")
+        logger.debug(
+            f"Available journeys_per_distribution keys = {list(journeys_per_distribution.keys())}"
         )
-
         params = dist_params[dist_key]
         dist_mode, requested_n_agents = _get_distribution_mode_and_count(params)
         use_flow_spawning = params.get("use_flow_spawning", False)
@@ -1780,15 +1771,14 @@ def _add_agents(
             dist_area = shapely.intersection(polygon_obj, walkable_area.polygon)
 
             if dist_area.is_empty:
-                print(f"Warning: Distribution {dist_key} is outside walkable area")
+                logger.warning(f"Distribution {dist_key} is outside walkable area")
                 continue
 
             # dist_key already matches journey mapping keys (e.g. jps-distributions_0).
             distribution_journeys = journeys_per_distribution.get(dist_key, [])
-            print(
-                f"DEBUG: dist_key = '{dist_key}', found {len(distribution_journeys)} distribution_journeys"
+            logger.debug(
+                f"dist_key = '{dist_key}', found {len(distribution_journeys)} distribution_journeys"
             )
-
             if use_flow_spawning:
                 has_flow_spawning = True
 
@@ -1804,7 +1794,7 @@ def _add_agents(
                     n_agents = max(1, int(max_capacity * percentage / 100))
 
                 if n_agents <= 0:
-                    print(f"Warning: No agents fit in distribution {dist_key}")
+                    logger.warning(f"No agents fit in distribution {dist_key}")
                     continue
 
                 # Get flow parameters
@@ -1852,10 +1842,9 @@ def _add_agents(
                     }
                 )
 
-                print(
+                logger.info(
                     f"Flow spawning: {dist_key} - {n_agents} agents over {flow_duration}s (freq: {frequency:.2f}s, rate: {1 / frequency:.2f} agents/s)"
                 )
-
             else:
                 # Store for immediate spawning
                 immediate_spawn_distributions[dist_key] = {
@@ -1866,7 +1855,7 @@ def _add_agents(
                 }
 
         except Exception as e:
-            print(f"Warning: Error processing distribution {dist_key}: {e}")
+            logger.warning(f"Error processing distribution {dist_key}: {e}")
             continue
 
     agent_counter_per_source = [0] * len(flow_distributions)
@@ -1934,21 +1923,19 @@ def _add_agents(
                 if premovement_seed is None:
                     premovement_seed = seed + 1000
 
-                print(
+                logger.info(
                     f"Generating premovement times for {dist_key}: {dist_type} with params {dist_params}, seed={premovement_seed}"
                 )
-
                 distribution = create_premovement_distribution(
                     dist_type, dist_params, premovement_seed
                 )
                 agent_premovement_times = distribution.sample(len(positions))
 
-                print(
+                logger.info(
                     f"Premovement times stats - Min: {agent_premovement_times.min():.2f}s, "
                     f"Max: {agent_premovement_times.max():.2f}s, "
                     f"Mean: {agent_premovement_times.mean():.2f}s"
                 )
-
             # Sample per-agent radius and v0
             rng = np.random.RandomState(seed + zlib.crc32(dist_key.encode()) % (2**31))
             sampled_radii, sampled_v0s = _sample_agent_values(
@@ -1956,10 +1943,9 @@ def _add_agents(
             )
 
             if distribution_journeys:
-                print(
+                logger.info(
                     f"Distribution {dist_key} has {len(distribution_journeys)} journey variants"
                 )
-
                 variant_weights, total_weight = _normalize_variant_weights(
                     distribution_journeys
                 )
@@ -1989,14 +1975,13 @@ def _add_agents(
                         agent_assignments.append((variant_info, variant_agents))
                         remaining_agents -= variant_agents
 
-                    print(
+                    logger.info(
                         f"Variant {variant_data['variant_name']}: {variant_agents} agents "
                         f"(weight={variant_weight}, total={total_weight})"
                     )
-
                 # Verify we're using all agents
                 total_assigned = sum(assignment[1] for assignment in agent_assignments)
-                print(f"Total agents assigned: {total_assigned}/{len(positions)}")
+                logger.info(f"Total agents assigned: {total_assigned}/{len(positions)}")
 
                 agent_index = 0
                 for variant_info, variant_agents in agent_assignments:
@@ -2088,10 +2073,9 @@ def _add_agents(
                                 current_agent_id += 1
             else:
                 # No journey variants — spawn on global DS journey, build DS wait info
-                print(
+                logger.info(
                     f"Distribution {dist_key} has no journey variants - using DS nearest exit"
                 )
-
                 # Build stage configs for DS navigation
                 ds_info = direct_steering_info or {}
                 stage_configs = {}
@@ -2187,7 +2171,7 @@ def _add_agents(
                 f"Consider: 1) Making the distribution area larger, 2) Reducing the number of agents, "
                 f"3) Increasing distance between agents, or 4) Checking for obstacles in the area."
             )
-            print(f"ERROR: {error_msg}")
+            logger.error(f"{error_msg}")
             raise Exception(error_msg)
 
     spawning_info = {
