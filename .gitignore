@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Docs build artifacts
+docs/build/
+docs/source/api/
+docs/source/notebooks/bottleneck_tutorial.ipynb

@@ -1,0 +1,16 @@
+sphinx~=8.1
+sphinx-book-theme~=1.1
+sphinx-autoapi~=3.4
+sphinx-copybutton~=0.5
+sphinx-favicon~=1.0
+sphinx-notfound-page~=1.1
+myst-nb~=1.1
+nbconvert~=7.16
+
+# Runtime deps required to execute the tutorial notebook at build time.
+jupedsim-scenarios
+pedpy
+shapely
+numpy
+pandas
+matplotlib
