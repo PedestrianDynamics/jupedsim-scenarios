@@ -99,6 +99,25 @@ def is_inside_polygon(x, y, polygon):
         return False
 
 
+def body_intersects_polygon(x, y, polygon, agent_radius):
+    """True if a disk of `agent_radius` centered at (x, y) overlaps polygon.
+
+    Used for exit-arrival checks where the routing's arrival waypoint may
+    land outside a narrow exit polygon (issue #15). Shapely's
+    `polygon.distance(point)` is 0 when the point is inside or on the
+    boundary, so this also subsumes `is_inside_polygon` for any
+    non-negative radius.
+    """
+    if polygon is None:
+        return False
+    try:
+        from shapely.geometry import Point
+
+        return polygon.distance(Point(float(x), float(y))) <= max(0.0, float(agent_radius))
+    except Exception:
+        return False
+
+
 
 def sample_wait_time(stage_cfg, base_seed, step_index):
     mean_wait = float(stage_cfg.get("waiting_time", 0.0))
@@ -235,7 +254,15 @@ def check_stage_reached(wait_info, stage_cfg, x, y, current_time, target):
         wait_info["inside_since"] = None
         return False
 
-    # Original logic for waiting stages and exits
+    # Exits despawn on body-polygon overlap rather than center-inside: the
+    # routing's arrival waypoint isn't guaranteed to land inside a narrow
+    # exit polygon, so an agent whose body clearly intersects the exit
+    # could otherwise stall ~radius short and never despawn (issue #15).
+    if stage_type == "exit" and stage_polygon is not None:
+        agent_radius = float(wait_info.get("agent_radius", 0.2))
+        return body_intersects_polygon(x, y, stage_polygon, agent_radius)
+
+    # Original logic for waiting stages.
     reach_dist = float(wait_info.get("agent_radius", 0.2)) + 0.5
     if target is None:
         return False
