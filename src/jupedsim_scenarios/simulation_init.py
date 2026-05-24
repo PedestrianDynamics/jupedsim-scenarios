@@ -33,7 +33,7 @@ def is_package_installed(import_name: str) -> bool:
     return importlib.util.find_spec(import_name) is not None
 
 
-def install_if_missing(pip_name: str, import_name: str = None):
+def install_if_missing(pip_name: str, import_name: str | None = None):
     """Pip install missing packages."""
     import_name = import_name or pip_name
     if not is_package_installed(import_name):
@@ -650,7 +650,7 @@ def initialize_simulation_from_json(
     seed: int = 42,
     model_type: str = "CollisionFreeSpeedModel",
     global_parameters=None,
-) -> tuple[dict[str, Any], list[tuple[float, float]], dict[int, float]]:
+) -> tuple[dict[str, Any], list[tuple[float, float]], dict[int, float], dict[str, Any]]:
     """
     Initialize a JuPedSim simulation from a JSON configuration with fallback logic.
     """
@@ -710,7 +710,7 @@ def _initialize_complete_config(
     seed: int,
     model_type: str,
     global_parameters=None,
-) -> tuple[dict[str, Any], list[tuple[float, float]], dict[int, float]]:
+) -> tuple[dict[str, Any], list[tuple[float, float]], dict[int, float], dict[str, Any]]:
     """Original initialization logic for complete configurations"""
     stage_map, direct_steering_info = _add_stages(simulation, data, walkable_area)
     dist_geom, dist_params = _process_distributions(data)
@@ -1023,7 +1023,7 @@ def _initialize_with_fallback(
     spawning_freqs_and_numbers = []
     starting_pos_per_source = []
     num_agents_per_source = []
-    flow_distributions = []
+    flow_distributions: list[dict[str, Any]] = []
     has_flow_spawning = False
 
     all_positions = []
@@ -1755,7 +1755,7 @@ def _add_agents(
     spawning_freqs_and_numbers = []
     starting_pos_per_source = []
     num_agents_per_source = []
-    flow_distributions = []
+    flow_distributions: list[dict[str, Any]] = []
     has_flow_spawning = False
 
     # Process distributions to separate flow vs immediate spawning

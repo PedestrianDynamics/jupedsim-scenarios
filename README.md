@@ -3,6 +3,9 @@
 [![CI](https://github.com/PedestrianDynamics/jupedsim-scenarios/actions/workflows/ci.yml/badge.svg)](https://github.com/PedestrianDynamics/jupedsim-scenarios/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/jupedsim-scenarios.svg)](https://pypi.org/project/jupedsim-scenarios/)
 [![Python versions](https://img.shields.io/pypi/pyversions/jupedsim-scenarios.svg)](https://pypi.org/project/jupedsim-scenarios/)
+[![Downloads](https://static.pepy.tech/badge/jupedsim-scenarios/month)](https://pepy.tech/project/jupedsim-scenarios)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Python toolkit for running, sweeping, and analyzing
