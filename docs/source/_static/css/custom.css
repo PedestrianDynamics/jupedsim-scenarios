@@ -1,0 +1,13 @@
+/* jupedsim-scenarios — minor tweaks on top of sphinx-book-theme */
+
+/* Tighten code blocks slightly */
+div.highlight pre {
+    font-size: 0.85em;
+}
+
+/* Subtle accent for jupedsim ecosystem links */
+a.external::after {
+    content: " ↗";
+    font-size: 0.8em;
+    opacity: 0.6;
+}
