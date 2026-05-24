@@ -30,7 +30,11 @@ def _scenario(wkt: str) -> Scenario:
 
 def test_constructor_parses_polygon_lazily():
     s = _scenario(SMALL_WKT)
+    # Cache is unset until the first .walkable_polygon access — that's
+    # what makes the invalidation in __setattr__ cheap.
+    assert s._walkable_polygon is None
     assert s.walkable_polygon.area == pytest.approx(1.0)
+    assert s._walkable_polygon is not None
 
 
 def test_field_assignment_invalidates_cache():
