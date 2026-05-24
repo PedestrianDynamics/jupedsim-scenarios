@@ -1,6 +1,8 @@
 """Generate examples/bottleneck_tutorial.ipynb. Run once; commit the .ipynb."""
 from __future__ import annotations
+
 from pathlib import Path
+
 import nbformat as nbf
 
 nb = nbf.v4.new_notebook()
@@ -157,8 +159,9 @@ and a side-by-side trajectory snapshot per model.
 
 code("""
 MODELS = [
+    "SocialForceModel",
     "CollisionFreeSpeedModel",
-    "CollisionFreeSpeedModelV3",
+    "WarpDriverModel",
     "AnticipationVelocityModel",
 ]
 
@@ -178,7 +181,7 @@ print(agg_m)
 
 fig, ax = plt.subplots(figsize=(7, 4))
 ax.bar(range(len(MODELS)), agg_m["mean"], yerr=agg_m["std"].fillna(0),
-       capsize=5, color=["#1f6feb", "#2da44e", "#bf8700"])
+       capsize=5, color=["#1f6feb", "#2da44e", "#bf8700", "#cf222e"])
 ax.set_xticks(range(len(MODELS)))
 ax.set_xticklabels([m.replace("Model", "") for m in MODELS], rotation=15, ha="right")
 ax.set_ylabel("Evacuation time [s]")
@@ -190,7 +193,7 @@ plt.show()
 
 code("""
 # Side-by-side trajectory snapshots — one representative seed per model
-fig, axes = plt.subplots(1, len(MODELS), figsize=(15, 4), sharey=True)
+fig, axes = plt.subplots(1, len(MODELS), figsize=(18, 4), sharey=True)
 for ax, model in zip(axes, MODELS):
     trial = next(t for t in sweep_m.trials if t.axis_values["model"] == model)
     traj = load_trajectory_from_jupedsim_sqlite(Path(trial.result.sqlite_file))
@@ -227,7 +230,12 @@ We plot two curves per model:
 
 code("""
 WIDTHS = [0.8, 1.0, 1.2, 1.4, 1.6]
-MODELS_2D = ["CollisionFreeSpeedModel", "AnticipationVelocityModel"]
+MODELS_2D = [
+    "SocialForceModel",
+    "CollisionFreeSpeedModel",
+    "WarpDriverModel",
+    "AnticipationVelocityModel",
+]
 
 def bottleneck_factory(params):
     s = load_scenario(str(ASSET))
@@ -264,8 +272,10 @@ print(agg2)
 
 code("""
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.5))
-colors = {"CollisionFreeSpeedModel": "#1f6feb",
-          "AnticipationVelocityModel": "#bf8700"}
+colors = {"SocialForceModel": "#1f6feb",
+          "CollisionFreeSpeedModel": "#2da44e",
+          "WarpDriverModel": "#bf8700",
+          "AnticipationVelocityModel": "#cf222e"}
 
 for model in MODELS_2D:
     sub = df[df.model == model].groupby("width")
