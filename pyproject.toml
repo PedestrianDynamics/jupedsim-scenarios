@@ -32,6 +32,7 @@ dependencies = [
 dev = [
     "pytest>=8",
     "ruff>=0.5",
+    "mypy>=1.11",
 ]
 
 [project.scripts]
@@ -58,6 +59,15 @@ select = ["E", "F", "I", "UP", "B"]
 #   B904 — bare `raise Exception(...)` inside except handlers
 # Both will be tightened up in a follow-up once the code is ours stylistically.
 ignore = ["E501", "B007", "B904"]
+
+[tool.mypy]
+python_version = "3.11"
+# Permissive baseline: catches structural bugs (return-type mismatches,
+# missing annotations, implicit Optional) without demanding strict
+# typing on dict-heavy scenario code. Tighten later by dropping flags.
+ignore_missing_imports = true   # jupedsim, joblib, pandas: no stubs
+warn_return_any = false
+exclude = ["tests/", "build/", "docs/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

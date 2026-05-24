@@ -844,7 +844,7 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
         premovement_times = spawning_info.get("premovement_times", {})
         direct_steering_info = spawning_info.get("direct_steering_info", {})
         agent_wait_info = spawning_info.get("agent_wait_info", {})
-        checkpoint_throughput_tracker = {}
+        checkpoint_throughput_tracker: dict[Any, dict[str, float]] = {}
         agent_speed_state: dict[int, dict[str, Any]] = {}
         flow_variant_rng = random.Random(seed)
         # Per-source RNGs for flow-spawn agent parameter sampling. Seed
