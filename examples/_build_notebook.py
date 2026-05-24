@@ -5,14 +5,19 @@ from pathlib import Path
 
 import nbformat as nbf
 
-nb = nbf.v4.new_notebook()
 cells = []
 
 def md(src: str):
-    cells.append(nbf.v4.new_markdown_cell(src.strip("\n")))
+    cell = nbf.v4.new_markdown_cell(src.strip("\n"))
+    # Stable, sequential cell IDs so regenerating the notebook produces
+    # a deterministic diff instead of fresh random UUIDs every run.
+    cell["id"] = f"cell-{len(cells):02d}"
+    cells.append(cell)
 
 def code(src: str):
-    cells.append(nbf.v4.new_code_cell(src.strip("\n")))
+    cell = nbf.v4.new_code_cell(src.strip("\n"))
+    cell["id"] = f"cell-{len(cells):02d}"
+    cells.append(cell)
 
 
 md("""
@@ -35,7 +40,9 @@ Run top-to-bottom. Steps 3–5 take a few minutes each (tune `SEEDS_PER_COND`).
 
 code("""
 # Shared imports + constants
+from datetime import datetime
 from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -47,10 +54,17 @@ from jupedsim_scenarios import (
     run_sweep_from_factory,
 )
 
+# Resolve the bottleneck zip whether the notebook is launched from
+# examples/ (default) or from the repository root.
 ASSET = Path("assets/bottleneck.zip")
+if not ASSET.exists():
+    ASSET = Path("examples/assets/bottleneck.zip")
+
 SEEDS_PER_COND = 2          # bump to 5+ for publication-quality variance
 WORKERS = 4                 # parallel trial workers
 plt.rcParams["figure.dpi"] = 110
+
+print(f"Executed on {datetime.now().strftime('%d.%m.%Y, %H:%M')}")
 """)
 
 
@@ -318,12 +332,17 @@ md("""
   before calling `sweep.cleanup()`.
 """)
 
-nb["cells"] = cells
-nb["metadata"] = {
-    "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
-    "language_info": {"name": "python"},
-}
+def main() -> None:
+    nb = nbf.v4.new_notebook()
+    nb["cells"] = cells
+    nb["metadata"] = {
+        "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+        "language_info": {"name": "python"},
+    }
+    out = Path(__file__).parent / "bottleneck_tutorial.ipynb"
+    nbf.write(nb, out)
+    print(f"wrote {out}")
 
-out = Path(__file__).parent / "bottleneck_tutorial.ipynb"
-nbf.write(nb, out)
-print(f"wrote {out}")
+
+if __name__ == "__main__":
+    main()
