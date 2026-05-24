@@ -236,10 +236,16 @@ centred on `y = 3.0`.
 
 We plot two curves per model:
 
-- **Evacuation time vs width** — drops monotonically as width grows.
+- **Evacuation time vs width** — drops monotonically as width grows
+  (with one notable exception: see below).
 - **Flow** `J = N / t` **vs width** — compared against the empirical
   linear fit `J = 1.9·b` reported in Fig. 4 of
   [Seyfried et al., *Enhanced empirical data for the fundamental diagram and the flow through bottlenecks*](https://arxiv.org/pdf/1007.4058).
+
+Watch the `CollisionFreeSpeedModel` point at `b = 0.8 m`: agents clog
+and only a fraction evacuates before the (raised) simulation cap fires.
+Different models cope with the same narrow geometry differently — a
+useful reminder that "which model" is itself a parameter worth sweeping.
 """)
 
 code("""
@@ -250,20 +256,32 @@ MODELS_2D = [
     "WarpDriverModel",
 ]
 
+# Load the base scenario once; the factory copies it per trial.
+# Reloading the zip inside the factory would re-parse it for every
+# (trial, seed) combination.
+BASE_2D = load_scenario(str(ASSET))
+
 def bottleneck_factory(params):
-    s = load_scenario(str(ASSET))
     w = params["width"]
     y_lo, y_hi = 3.0 - w / 2, 3.0 + w / 2
     # Rewrite the inner ring of the walkable polygon so the bottleneck
     # opening (the gap between room and corridor at x in [15, 15.2])
-    # has the requested width.
-    s.walkable_area_wkt = (
+    # has the requested width. NOTE: pass via .copy() so the cached
+    # shapely polygon the simulator actually reads gets rebuilt — a
+    # plain `s.walkable_area_wkt = ...` would leave the cache stale
+    # and every trial would run on the original geometry.
+    new_wkt = (
         "POLYGON((20 7, 20 -1, -1 -1, -1 7, 20 7), "
         f"(15.2 {y_hi}, 15.2 6.199999999999999, -0.2 6.199999999999999, "
         f"-0.2 -0.2, 15.2 -0.2, 15.2 {y_lo}, 15 {y_lo}, "
         f"15 2.0000000000000002e-16, 0 0, 0 6, 15 6, 15 {y_hi}, 15.2 {y_hi}))"
     )
+    s = BASE_2D.copy(walkable_area_wkt=new_wkt)
     s.set_model_type(params["model"])
+    # Narrow widths can clog hard (especially CFM at b = 0.8 m, which
+    # still hits the cap — see plot). 900 s gives the better-behaved
+    # models room to finish even at the narrow end.
+    s.set_max_time(900)
     return s, None
 
 trials = [{"model": m, "width": w} for m in MODELS_2D for w in WIDTHS]
