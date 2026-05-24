@@ -52,8 +52,13 @@ _ASSET_SRC = _HERE.parent.parent / "examples" / "assets"
 _ASSET_DEST = _HERE / "notebooks" / "assets"
 _ASSET_DEST.mkdir(parents=True, exist_ok=True)
 for _asset in _ASSET_SRC.iterdir():
+    _dest = _ASSET_DEST / _asset.name
     if _asset.is_file():
-        shutil.copy2(_asset, _ASSET_DEST / _asset.name)
+        shutil.copy2(_asset, _dest)
+    elif _asset.is_dir():
+        if _dest.exists():
+            shutil.rmtree(_dest)
+        shutil.copytree(_asset, _dest)
 
 # Mirror cookbook notebooks + their scenario_files/ into the docs tree.
 # Source of truth lives at ../../examples/cookbook/.

@@ -12,3 +12,5 @@ after the :doc:`bottleneck tutorial <notebooks/bottleneck_tutorial>`.
    notebooks/howtos/02_change_agent_count
    notebooks/howtos/03_change_agent_speed
    notebooks/howtos/04_sweep_basics
+   notebooks/howtos/05_set_zone_speed_factor
+   notebooks/howtos/06_set_checkpoint_waiting_time
