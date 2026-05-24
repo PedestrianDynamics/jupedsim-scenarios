@@ -46,6 +46,15 @@ _HOWTO_DEST.mkdir(parents=True, exist_ok=True)
 for _nb in sorted(_HOWTO_SRC.glob("*.ipynb")):
     shutil.copy2(_nb, _HOWTO_DEST / _nb.name)
 
+# Mirror example assets so notebooks' `../assets/...` references resolve
+# identically when run raw and when rendered into the docs.
+_ASSET_SRC = _HERE.parent.parent / "examples" / "assets"
+_ASSET_DEST = _HERE / "notebooks" / "assets"
+_ASSET_DEST.mkdir(parents=True, exist_ok=True)
+for _asset in _ASSET_SRC.iterdir():
+    if _asset.is_file():
+        shutil.copy2(_asset, _ASSET_DEST / _asset.name)
+
 # ---------------------------------------------------------------------------
 # General configuration
 # ---------------------------------------------------------------------------
