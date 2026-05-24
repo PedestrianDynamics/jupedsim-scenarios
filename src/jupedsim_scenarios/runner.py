@@ -229,13 +229,23 @@ class Scenario:
         self._sync_runtime_to_raw()
 
     def __setattr__(self, name: str, value: Any) -> None:
-        # Invalidate the cached shapely polygon whenever the WKT string
-        # changes. Plain dataclass assignment used to leave the cache
-        # stale, silently letting sweeps run on the original geometry
-        # (#18). The polygon is re-parsed lazily on next access.
+        # Keep cached / denormalized state in sync with the live fields
+        # so plain dataclass assignment never leaves the scenario in an
+        # inconsistent state (#18, #21).
+        #   - walkable_area_wkt → drops the cached shapely polygon
+        #     (re-parsed lazily on next access).
+        #   - seed / model_type / sim_params → re-mirrors into the
+        #     denormalized copy in raw["config"]["simulation_settings"]
+        #     that the JSON dump path consumes.
+        # Dict-level mutations (e.g. s.sim_params["x"] = 5) still bypass
+        # this hook — use set_model_params() for those.
         super().__setattr__(name, value)
         if name == "walkable_area_wkt":
             super().__setattr__("_walkable_polygon", None)
+        elif name in ("seed", "model_type", "sim_params") and all(
+            k in self.__dict__ for k in ("raw", "seed", "model_type", "sim_params")
+        ):
+            self._sync_runtime_to_raw()
 
     @property
     def walkable_polygon(self):

@@ -51,3 +51,32 @@ def test_copy_override_invalidates_cache():
     assert clone.walkable_polygon.area == pytest.approx(25.0)
     # Original is unchanged.
     assert s.walkable_polygon.area == pytest.approx(1.0)
+
+
+# --- #21: raw stays in sync with seed / model_type / sim_params ---
+
+def _settings(s: Scenario) -> dict:
+    return s.raw["config"]["simulation_settings"]
+
+
+def test_seed_assignment_syncs_raw():
+    s = _scenario(SMALL_WKT)
+    assert _settings(s)["baseSeed"] == 42
+    s.seed = 99
+    assert _settings(s)["baseSeed"] == 99
+
+
+def test_model_type_assignment_syncs_raw():
+    s = _scenario(SMALL_WKT)
+    assert _settings(s)["simulationParams"]["model_type"] == "CollisionFreeSpeedModel"
+    s.model_type = "SocialForceModel"
+    assert _settings(s)["simulationParams"]["model_type"] == "SocialForceModel"
+
+
+def test_sim_params_assignment_syncs_raw():
+    s = _scenario(SMALL_WKT)
+    s.sim_params = {"max_simulation_time": 123}
+    assert _settings(s)["simulationParams"]["max_simulation_time"] == 123
+    # _sync_runtime_to_raw treats self.model_type as the source of
+    # truth and overwrites any "model_type" inside sim_params.
+    assert _settings(s)["simulationParams"]["model_type"] == "CollisionFreeSpeedModel"
