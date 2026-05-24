@@ -256,8 +256,12 @@ MODELS_2D = [
     "WarpDriverModel",
 ]
 
+# Load the base scenario once; the factory copies it per trial.
+# Reloading the zip inside the factory would re-parse it for every
+# (trial, seed) combination.
+BASE_2D = load_scenario(str(ASSET))
+
 def bottleneck_factory(params):
-    base = load_scenario(str(ASSET))
     w = params["width"]
     y_lo, y_hi = 3.0 - w / 2, 3.0 + w / 2
     # Rewrite the inner ring of the walkable polygon so the bottleneck
@@ -272,10 +276,11 @@ def bottleneck_factory(params):
         f"-0.2 -0.2, 15.2 -0.2, 15.2 {y_lo}, 15 {y_lo}, "
         f"15 2.0000000000000002e-16, 0 0, 0 6, 15 6, 15 {y_hi}, 15.2 {y_hi}))"
     )
-    s = base.copy(walkable_area_wkt=new_wkt)
+    s = BASE_2D.copy(walkable_area_wkt=new_wkt)
     s.set_model_type(params["model"])
-    # Narrow widths (≤ 1.0 m) can clog hard — give the sim enough
-    # headroom that every trial finishes within max_simulation_time.
+    # Narrow widths can clog hard (especially CFM at b = 0.8 m, which
+    # still hits the cap — see plot). 900 s gives the better-behaved
+    # models room to finish even at the narrow end.
     s.set_max_time(900)
     return s, None
 
