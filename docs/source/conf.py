@@ -29,9 +29,14 @@ release = version
 _HERE = Path(__file__).parent
 _EXAMPLE_NB = _HERE.parent.parent / "examples" / "bottleneck_tutorial.ipynb"
 _NB_DEST = _HERE / "notebooks" / "bottleneck_tutorial.ipynb"
-if _EXAMPLE_NB.exists():
-    _NB_DEST.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(_EXAMPLE_NB, _NB_DEST)
+if not _EXAMPLE_NB.exists():
+    raise FileNotFoundError(
+        f"Tutorial notebook not found at {_EXAMPLE_NB}. "
+        "The docs build expects examples/bottleneck_tutorial.ipynb to exist; "
+        "regenerate it with `python examples/_build_notebook.py`."
+    )
+_NB_DEST.parent.mkdir(parents=True, exist_ok=True)
+shutil.copy2(_EXAMPLE_NB, _NB_DEST)
 
 # ---------------------------------------------------------------------------
 # General configuration
@@ -49,8 +54,8 @@ extensions = [
     "myst_nb",
 ]
 
-templates_path = ["_templates"]
-exclude_patterns = []
+templates_path: list[str] = []
+exclude_patterns: list[str] = []
 
 # Cross-project linking — match jupedsim's intersphinx targets so symbols
 # resolve when we reference jupedsim / shapely / pedpy types.
@@ -87,13 +92,13 @@ add_module_names = False
 
 
 # ---------------------------------------------------------------------------
-# myst-nb — execute notebooks at build time so figures stay fresh.
+# myst-nb — render Jupyter notebooks as docs pages.
+#   Execution is intentionally OFF: the tutorial is committed pre-executed
+#   (see examples/_build_notebook.py + `jupyter nbconvert --execute --inplace`).
+#   Re-executing on every docs build would add ~5 minutes and require
+#   jupedsim's full runtime in the docs image; we trust the committed outputs.
 # ---------------------------------------------------------------------------
 
-# The tutorial notebook ships pre-executed (see examples/_build_notebook.py +
-# `jupyter nbconvert --execute --inplace`). Re-executing on every docs build
-# would add ~5 minutes and pull in jupedsim's full runtime; trust the
-# committed outputs instead.
 nb_execution_mode = "off"
 nb_execution_raise_on_error = True
 myst_enable_extensions = [

@@ -12,20 +12,24 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
     name: Build docs
     runs-on: ubuntu-latest
+    # Scope per-ref so PRs and main don't queue behind each other; only
+    # cancel in-flight builds on the same ref.
+    concurrency:
+      group: docs-build-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          # Matches pyproject.toml supported versions (requires-python >= 3.11,
+          # classifiers list 3.11 and 3.12). Stay on 3.12 until the project
+          # advertises 3.13 support.
+          python-version: "3.12"
 
       - name: Install package + docs deps
         run: |
@@ -48,6 +52,11 @@ jobs:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # GitHub Pages only allows one in-flight deploy at a time; serialize
+    # main deploys (and let the latest one cancel any pending earlier one).
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
