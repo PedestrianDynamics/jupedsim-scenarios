@@ -7,6 +7,21 @@ jupedsim-scenarios
    :hidden:
 
    Getting started <notebooks/bottleneck_tutorial>
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+   :caption: How-tos
+
+   notebooks/howtos/01_inspect_scenario
+   notebooks/howtos/02_change_agent_count
+   notebooks/howtos/03_change_agent_speed
+   notebooks/howtos/04_sweep_basics
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
    API reference <api/jupedsim_scenarios/index>
 
 

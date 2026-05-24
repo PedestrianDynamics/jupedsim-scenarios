@@ -38,6 +38,14 @@ if not _EXAMPLE_NB.exists():
 _NB_DEST.parent.mkdir(parents=True, exist_ok=True)
 shutil.copy2(_EXAMPLE_NB, _NB_DEST)
 
+# Mirror the focused how-to notebooks into source/notebooks/howtos/.
+# Single source of truth lives at ../../examples/howtos/*.ipynb.
+_HOWTO_SRC = _HERE.parent.parent / "examples" / "howtos"
+_HOWTO_DEST = _HERE / "notebooks" / "howtos"
+_HOWTO_DEST.mkdir(parents=True, exist_ok=True)
+for _nb in sorted(_HOWTO_SRC.glob("*.ipynb")):
+    shutil.copy2(_nb, _HOWTO_DEST / _nb.name)
+
 # ---------------------------------------------------------------------------
 # General configuration
 # ---------------------------------------------------------------------------
