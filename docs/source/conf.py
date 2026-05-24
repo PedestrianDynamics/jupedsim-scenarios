@@ -116,6 +116,7 @@ myst_enable_extensions = [
 html_theme = "sphinx_book_theme"
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
+html_logo = "_static/jupedsim.svg"
 html_context = {"default_mode": "light"}
 
 html_theme_options = {
