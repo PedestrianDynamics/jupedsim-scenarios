@@ -264,19 +264,18 @@ BASE_2D = load_scenario(str(ASSET))
 def bottleneck_factory(params):
     w = params["width"]
     y_lo, y_hi = 3.0 - w / 2, 3.0 + w / 2
-    # Rewrite the inner ring of the walkable polygon so the bottleneck
-    # opening (the gap between room and corridor at x in [15, 15.2])
-    # has the requested width. NOTE: pass via .copy() so the cached
-    # shapely polygon the simulator actually reads gets rebuilt — a
-    # plain `s.walkable_area_wkt = ...` would leave the cache stale
-    # and every trial would run on the original geometry.
-    new_wkt = (
+    # Start from an independent copy of the base scenario, then mutate
+    # in place. Rewriting the inner ring of the walkable polygon moves
+    # the bottleneck opening (the gap at x in [15, 15.2]) to the
+    # requested width; reassigning .walkable_area_wkt re-parses the
+    # shapely cache automatically.
+    s = BASE_2D.copy()
+    s.walkable_area_wkt = (
         "POLYGON((20 7, 20 -1, -1 -1, -1 7, 20 7), "
         f"(15.2 {y_hi}, 15.2 6.199999999999999, -0.2 6.199999999999999, "
         f"-0.2 -0.2, 15.2 -0.2, 15.2 {y_lo}, 15 {y_lo}, "
         f"15 2.0000000000000002e-16, 0 0, 0 6, 15 6, 15 {y_hi}, 15.2 {y_hi}))"
     )
-    s = BASE_2D.copy(walkable_area_wkt=new_wkt)
     s.set_model_type(params["model"])
     # Narrow widths can clog hard (especially CFM at b = 0.8 m, which
     # still hits the cap — see plot). 900 s gives the better-behaved
