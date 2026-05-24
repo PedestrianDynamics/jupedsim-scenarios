@@ -134,6 +134,28 @@ Runs a single scenario and prints a one-line JSON summary
 (`evacuation_time`, agent counts, `sqlite_file`) to stdout. Useful in CI
 or scripted pipelines; notebook workflows should stay on the Python API.
 
+## Documentation
+
+The full API reference and the bottleneck tutorial are built with Sphinx
+(stack mirrors [jupedsim.org](https://www.jupedsim.org/): `sphinx-book-theme`
++ `sphinx-autoapi` + `myst-nb`). Every push to `main` rebuilds and deploys
+the site via the `.github/workflows/docs.yml` GitHub Pages workflow.
+
+To build locally:
+
+```bash
+pip install -e .
+pip install -r docs/requirements.txt
+sphinx-build -b html docs/source docs/build/html
+open docs/build/html/index.html        # macOS; use xdg-open on Linux
+```
+
+`conf.py` mirrors `examples/bottleneck_tutorial.ipynb` into the docs tree at
+build time, so there's no committed duplicate. If you edit the notebook,
+regenerate it first with `python examples/_build_notebook.py` and re-execute
+with `jupyter nbconvert --to notebook --execute --inplace
+examples/bottleneck_tutorial.ipynb` before building the docs.
+
 ## Roadmap
 
 | Release | Scope                                                              |
