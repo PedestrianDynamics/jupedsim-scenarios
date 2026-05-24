@@ -221,3 +221,6 @@ __marimo__/
 docs/build/
 docs/source/api/
 docs/source/notebooks/bottleneck_tutorial.ipynb
+
+# Allow PNG assets used by example notebooks (global ~/.gitignore excludes *.png).
+!examples/assets/*.png
