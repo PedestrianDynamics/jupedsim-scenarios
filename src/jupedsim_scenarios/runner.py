@@ -223,14 +223,26 @@ class Scenario:
     sim_params: dict[str, Any]
     source_path: str | None = None
 
-    _walkable_polygon: Any = field(default=None, repr=False)
+    _walkable_polygon: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
-        self._walkable_polygon = wkt.loads(self.walkable_area_wkt)
         self._sync_runtime_to_raw()
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # Invalidate the cached shapely polygon whenever the WKT string
+        # changes. Plain dataclass assignment used to leave the cache
+        # stale, silently letting sweeps run on the original geometry
+        # (#18). The polygon is re-parsed lazily on next access.
+        super().__setattr__(name, value)
+        if name == "walkable_area_wkt":
+            super().__setattr__("_walkable_polygon", None)
 
     @property
     def walkable_polygon(self):
+        if self._walkable_polygon is None:
+            super().__setattr__(
+                "_walkable_polygon", wkt.loads(self.walkable_area_wkt)
+            )
         return self._walkable_polygon
 
     @property
@@ -511,8 +523,6 @@ class Scenario:
             if not hasattr(clone, key):
                 raise AttributeError(f"Scenario has no attribute '{key}'")
             setattr(clone, key, value)
-        if "walkable_area_wkt" in overrides:
-            clone._walkable_polygon = wkt.loads(clone.walkable_area_wkt)
         clone._sync_runtime_to_raw()
         return clone
 
