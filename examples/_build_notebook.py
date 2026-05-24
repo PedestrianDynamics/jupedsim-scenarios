@@ -162,7 +162,6 @@ MODELS = [
     "SocialForceModel",
     "CollisionFreeSpeedModel",
     "WarpDriverModel",
-    "AnticipationVelocityModel",
 ]
 
 base = load_scenario(str(ASSET))
@@ -181,7 +180,7 @@ print(agg_m)
 
 fig, ax = plt.subplots(figsize=(7, 4))
 ax.bar(range(len(MODELS)), agg_m["mean"], yerr=agg_m["std"].fillna(0),
-       capsize=5, color=["#1f6feb", "#2da44e", "#bf8700", "#cf222e"])
+       capsize=5, color=["#1f6feb", "#2da44e", "#bf8700"])
 ax.set_xticks(range(len(MODELS)))
 ax.set_xticklabels([m.replace("Model", "") for m in MODELS], rotation=15, ha="right")
 ax.set_ylabel("Evacuation time [s]")
@@ -193,7 +192,7 @@ plt.show()
 
 code("""
 # Side-by-side trajectory snapshots — one representative seed per model
-fig, axes = plt.subplots(1, len(MODELS), figsize=(18, 4), sharey=True)
+fig, axes = plt.subplots(1, len(MODELS), figsize=(15, 4), sharey=True)
 for ax, model in zip(axes, MODELS):
     trial = next(t for t in sweep_m.trials if t.axis_values["model"] == model)
     traj = load_trajectory_from_jupedsim_sqlite(Path(trial.result.sqlite_file))
@@ -224,8 +223,9 @@ centred on `y = 3.0`.
 We plot two curves per model:
 
 - **Evacuation time vs width** — drops monotonically as width grows.
-- **Specific flow** `J_s = N / (t · w)` **vs width** — should
-  approach the empirical Kretz/Seyfried plateau of ~1.9 ped/(m·s).
+- **Flow** `J = N / t` **vs width** — compared against the empirical
+  linear fit `J = 1.9·b` reported in Fig. 4 of
+  [Seyfried et al., *Enhanced empirical data for the fundamental diagram and the flow through bottlenecks*](https://arxiv.org/pdf/1007.4058).
 """)
 
 code("""
@@ -234,7 +234,6 @@ MODELS_2D = [
     "SocialForceModel",
     "CollisionFreeSpeedModel",
     "WarpDriverModel",
-    "AnticipationVelocityModel",
 ]
 
 def bottleneck_factory(params):
@@ -263,9 +262,9 @@ sweep_2d = run_sweep_from_factory(
 )
 
 df = sweep_2d.to_dataframe()
-df["specific_flow"] = df["total_agents"] / (df["evacuation_time"] * df["width"])
+df["flow"] = df["total_agents"] / df["evacuation_time"]
 agg2 = (df.groupby(["model", "width"])
-          [["evacuation_time", "specific_flow"]]
+          [["evacuation_time", "flow"]]
           .agg(["mean", "std"]))
 print(agg2)
 """)
@@ -274,30 +273,30 @@ code("""
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.5))
 colors = {"SocialForceModel": "#1f6feb",
           "CollisionFreeSpeedModel": "#2da44e",
-          "WarpDriverModel": "#bf8700",
-          "AnticipationVelocityModel": "#cf222e"}
+          "WarpDriverModel": "#bf8700"}
 
 for model in MODELS_2D:
     sub = df[df.model == model].groupby("width")
     et = sub["evacuation_time"].agg(["mean", "std"])
-    sf = sub["specific_flow"].agg(["mean", "std"])
+    fl = sub["flow"].agg(["mean", "std"])
     ax1.errorbar(et.index, et["mean"], yerr=et["std"].fillna(0),
                  fmt="o-", capsize=4, label=model.replace("Model", ""),
                  color=colors[model])
-    ax2.errorbar(sf.index, sf["mean"], yerr=sf["std"].fillna(0),
+    ax2.errorbar(fl.index, fl["mean"], yerr=fl["std"].fillna(0),
                  fmt="o-", capsize=4, label=model.replace("Model", ""),
                  color=colors[model])
 
-ax1.set_xlabel("Bottleneck width [m]")
+ax1.set_xlabel("Bottleneck width $b$ [m]")
 ax1.set_ylabel("Evacuation time [s]")
 ax1.set_title("Evac time vs width")
 ax1.grid(alpha=0.3); ax1.legend()
 
-ax2.axhline(1.9, color="gray", ls="--", lw=1,
-            label="Kretz empirical ≈ 1.9 ped/(m·s)")
-ax2.set_xlabel("Bottleneck width [m]")
-ax2.set_ylabel("Specific flow $J_s$ [ped/(m·s)]")
-ax2.set_title("Specific flow vs width")
+w_line = np.linspace(min(WIDTHS), max(WIDTHS), 50)
+ax2.plot(w_line, 1.9 * w_line, color="gray", ls="--", lw=1,
+         label=r"$J = 1.9\,b$  (Seyfried 2010, Fig. 4)")
+ax2.set_xlabel("Bottleneck width $b$ [m]")
+ax2.set_ylabel("Flow $J$ [1/s]")
+ax2.set_title("Flow vs width")
 ax2.grid(alpha=0.3); ax2.legend()
 
 plt.tight_layout()
