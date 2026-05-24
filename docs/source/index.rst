@@ -7,33 +7,8 @@ jupedsim-scenarios
    :hidden:
 
    Getting started <notebooks/bottleneck_tutorial>
-
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-   :caption: How-tos
-
-   notebooks/howtos/01_inspect_scenario
-   notebooks/howtos/02_change_agent_count
-   notebooks/howtos/03_change_agent_speed
-   notebooks/howtos/04_sweep_basics
-
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-   :caption: Cookbook
-
-   notebooks/cookbook/template_script
-   notebooks/cookbook/scenario_api_demo
-   notebooks/cookbook/model_comparison
-   notebooks/cookbook/bottleneck_zone_nt_diagram
-   notebooks/cookbook/faster_is_slower
-   notebooks/cookbook/stage_routing_square_room
-
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-
+   How-tos <howtos>
+   Cookbook <cookbook>
    API reference <api/jupedsim_scenarios/index>
 
 
