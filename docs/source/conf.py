@@ -55,6 +55,19 @@ for _asset in _ASSET_SRC.iterdir():
     if _asset.is_file():
         shutil.copy2(_asset, _ASSET_DEST / _asset.name)
 
+# Mirror cookbook notebooks + their scenario_files/ into the docs tree.
+# Source of truth lives at ../../examples/cookbook/.
+_COOKBOOK_SRC = _HERE.parent.parent / "examples" / "cookbook"
+_COOKBOOK_DEST = _HERE / "notebooks" / "cookbook"
+_COOKBOOK_DEST.mkdir(parents=True, exist_ok=True)
+for _nb in sorted(_COOKBOOK_SRC.glob("*.ipynb")):
+    shutil.copy2(_nb, _COOKBOOK_DEST / _nb.name)
+_COOKBOOK_FILES_SRC = _COOKBOOK_SRC / "scenario_files"
+_COOKBOOK_FILES_DEST = _COOKBOOK_DEST / "scenario_files"
+if _COOKBOOK_FILES_DEST.exists():
+    shutil.rmtree(_COOKBOOK_FILES_DEST)
+shutil.copytree(_COOKBOOK_FILES_SRC, _COOKBOOK_FILES_DEST)
+
 # ---------------------------------------------------------------------------
 # General configuration
 # ---------------------------------------------------------------------------

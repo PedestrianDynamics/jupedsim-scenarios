@@ -21,6 +21,18 @@ jupedsim-scenarios
 .. toctree::
    :maxdepth: 1
    :hidden:
+   :caption: Cookbook
+
+   notebooks/cookbook/template_script
+   notebooks/cookbook/scenario_api_demo
+   notebooks/cookbook/model_comparison
+   notebooks/cookbook/bottleneck_zone_nt_diagram
+   notebooks/cookbook/faster_is_slower
+   notebooks/cookbook/stage_routing_square_room
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
 
    API reference <api/jupedsim_scenarios/index>
 
