@@ -74,11 +74,11 @@ def create_agent_parameters(
         v2_params["desired_speed"] = params.get("v0", 1.2)
         v2_params["time_gap"] = 1.0
         if global_params:
-            v2_params["strength_neighbor_repulsion"] = (
-                global_params.strength_neighbor_repulsion
+            v2_params["strength_neighbor_repulsion"] = getattr(
+                global_params, "strength_neighbor_repulsion", 2.6
             )
-            v2_params["range_neighbor_repulsion"] = (
-                global_params.range_neighbor_repulsion
+            v2_params["range_neighbor_repulsion"] = getattr(
+                global_params, "range_neighbor_repulsion", 0.1
             )
         return jps.CollisionFreeSpeedModelV2AgentParameters(**v2_params)
 
@@ -120,13 +120,13 @@ def create_agent_parameters(
         sfm_params = base_params.copy()
         sfm_params["desired_speed"] = params.get("v0", 0.8)
         sfm_params["reaction_time"] = (
-            global_params.relaxation_time if global_params else 0.5
+            getattr(global_params, "relaxation_time", 0.5) if global_params else 0.5
         )
         sfm_params["agent_scale"] = (
-            global_params.agent_strength if global_params else 2000
+            getattr(global_params, "agent_strength", 2000) if global_params else 2000
         )
         sfm_params["force_distance"] = (
-            global_params.agent_range if global_params else 0.08
+            getattr(global_params, "agent_range", 0.08) if global_params else 0.08
         )
         sfm_params["mass"] = (
             getattr(global_params, "mass", 80.0) if global_params else 80.0
