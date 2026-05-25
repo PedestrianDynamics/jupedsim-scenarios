@@ -863,7 +863,7 @@ def _initialize_with_fallback(
                 # passed to JuPedSim via agent.target. Exits that extend past
                 # the walkable boundary (open-street pattern) would yield
                 # targets outside the accessible area; clip to the absorbing
-                # region (exit ∩ walkable) so samples stay inside.
+                # area (exit intersected with walkable) so samples stay inside.
                 steering_polygon = _clip_exit_to_walkable(
                     exit_polygon, walkable_area.polygon
                 )
@@ -1172,7 +1172,9 @@ def _initialize_with_fallback(
         agent_premovement_times = None
         if use_premovement:
             has_premovement = True
-            from utils.premovement_distributions import (
+            # Premovement support lives in an external utils package not vendored
+            # here; importing lazily keeps the default path dependency-free.
+            from utils.premovement_distributions import (  # type: ignore[import-not-found]
                 PREMOVEMENT_PRESETS,
                 create_premovement_distribution,
             )
@@ -1867,6 +1869,7 @@ def _add_agents(
     # Handle immediate spawning distributions (existing logic)
     for dist_key, spawn_data in immediate_spawn_distributions.items():
         try:
+            params = spawn_data["params"]
             max_radius = _get_max_agent_radius(spawn_data["params"])
             max_capacity = _estimate_max_capacity(spawn_data["area"], max_radius)
             dist_mode, requested_count = _get_distribution_mode_and_count(
@@ -1901,7 +1904,7 @@ def _add_agents(
             agent_premovement_times = None
             if use_premovement:
                 has_premovement = True
-                from utils.premovement_distributions import (
+                from utils.premovement_distributions import (  # type: ignore[import-not-found]
                     PREMOVEMENT_PRESETS,
                     create_premovement_distribution,
                 )

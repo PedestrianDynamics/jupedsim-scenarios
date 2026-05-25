@@ -230,3 +230,4 @@ docs/source/notebooks/bottleneck_tutorial.ipynb
 !examples/cookbook/scenario_files/**/*.wkt
 !examples/assets/**/*.json
 !examples/assets/**/*.wkt
+!pyrightconfig.json
