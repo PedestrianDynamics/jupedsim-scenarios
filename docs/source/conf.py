@@ -128,13 +128,17 @@ add_module_names = False
 
 # ---------------------------------------------------------------------------
 # myst-nb — render Jupyter notebooks as docs pages.
-#   Execution is intentionally OFF: the tutorial is committed pre-executed
-#   (see examples/_build_notebook.py + `jupyter nbconvert --execute --inplace`).
-#   Re-executing on every docs build would add ~5 minutes and require
-#   jupedsim's full runtime in the docs image; we trust the committed outputs.
+#   "force" re-executes every notebook on every docs build so the
+#   published outputs always reflect the current jupedsim-scenarios
+#   package, not whatever state the notebooks happened to be committed
+#   in. Trade-off: docs builds take longer and require the full
+#   simulation runtime (declared in docs/requirements.txt). Sweep
+#   notebooks can run for a few minutes; the timeout is raised
+#   accordingly.
 # ---------------------------------------------------------------------------
 
-nb_execution_mode = "off"
+nb_execution_mode = "force"
+nb_execution_timeout = 1800
 nb_execution_raise_on_error = True
 myst_enable_extensions = [
     "amsmath",
