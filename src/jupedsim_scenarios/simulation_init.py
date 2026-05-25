@@ -322,33 +322,6 @@ def _normalize_variant_weights(
     return weights, total_weight
 
 
-def _largest_polygon(geometry):
-    """Return the largest polygon from a geometry container."""
-    if geometry is None or geometry.is_empty:
-        return None
-    if geometry.geom_type == "Polygon":
-        return geometry
-    if geometry.geom_type == "MultiPolygon":
-        geoms = list(getattr(geometry, "geoms", []))
-        return max(geoms, key=lambda g: g.area) if geoms else None
-    if geometry.geom_type == "GeometryCollection":
-        polygons = [
-            g
-            for g in getattr(geometry, "geoms", [])
-            if getattr(g, "geom_type", "") in {"Polygon", "MultiPolygon"}
-        ]
-        if not polygons:
-            return None
-        flattened = []
-        for poly in polygons:
-            if poly.geom_type == "Polygon":
-                flattened.append(poly)
-            else:
-                flattened.extend(list(getattr(poly, "geoms", [])))
-        return max(flattened, key=lambda g: g.area) if flattened else None
-    return None
-
-
 def _spawn_area_polygons(geometry):
     """Flatten a spawn geometry into its polygon components."""
     if geometry is None or geometry.is_empty:
@@ -431,7 +404,6 @@ def _distribute_positions_by_number(
 
 def _pick_initial_stage_target(
     stage_cfg: dict[str, Any],
-    current_position: tuple[float, float] | None,
     rng,
     agent_radius: float,
     reach_penetration: float = 0.25,
@@ -469,7 +441,6 @@ def build_agent_path_state(
     waypoint_routing: dict[str, Any] | None,
     seed: int,
     agent_id: int,
-    initial_position: tuple[float, float] | None = None,
     agent_radius: float = 0.2,
 ) -> dict[str, Any] | None:
     """Build DS routing state as origin->weighted-next mapping."""
@@ -620,7 +591,6 @@ def build_agent_path_state(
     target_rng = np.random.RandomState(base_seed)
     target = _pick_initial_stage_target(
         stage_configs.get(current_target_stage, {}),
-        initial_position,
         target_rng,
         float(agent_radius),
         0.25,
@@ -1571,7 +1541,7 @@ def _add_stages(
             "stage_type": "exit",
         }
 
-    for dist_id, dist_data in data.get("distributions", {}).items():
+    for dist_id in data.get("distributions", {}):
         # Distributions don't need to be added as stages in JuPedSim,
         # but we need them in stage_map for journey creation
         stage_map[dist_id] = -1
@@ -2010,7 +1980,7 @@ def _add_agents(
                     )
 
                     if start_stage_key:
-                        for j in range(variant_agents):
+                        for _ in range(variant_agents):
                             if agent_index < len(positions):
                                 pos = positions[agent_index]
                                 agent_radius = float(sampled_radii[agent_index])
@@ -2066,7 +2036,6 @@ def _add_agents(
                                         waypoint_routing={},
                                         seed=seed,
                                         agent_id=agent_index,
-                                        initial_position=(float(pos[0]), float(pos[1])),
                                         agent_radius=agent_radius,
                                     )
                                     if path_state:

@@ -25,7 +25,6 @@ Usage::
 from __future__ import annotations
 
 import json
-import math
 import os
 import pathlib
 import random
@@ -39,7 +38,6 @@ from typing import Any
 import jupedsim as jps
 import numpy as np
 from shapely import wkt
-from shapely.geometry import Polygon
 
 from .direct_steering_runtime import (
     advance_path_target,
@@ -73,9 +71,9 @@ _MODEL_BUILDERS = {
         strength_neighbor_repulsion=p.get("strength_neighbor_repulsion", 2.6),
         range_neighbor_repulsion=p.get("range_neighbor_repulsion", 0.1),
     ),
-    "CollisionFreeSpeedModelV3": lambda p: jps.CollisionFreeSpeedModelV3(),
-    "WarpDriverModel": lambda p: jps.WarpDriverModel(),
-      "AnticipationVelocityModel": lambda p: jps.AnticipationVelocityModel(
+    "CollisionFreeSpeedModelV3": lambda _: jps.CollisionFreeSpeedModelV3(),
+    "WarpDriverModel": lambda _: jps.WarpDriverModel(),
+      "AnticipationVelocityModel": lambda _: jps.AnticipationVelocityModel(
         #strength_neighbor_repulsion=p.get("strength_neighbor_repulsion", 2.6),
         #range_neighbor_repulsion=p.get("range_neighbor_repulsion", 0.1),
         #anticipation_time=p.get("anticipation_time", 1.0)
@@ -95,43 +93,11 @@ _MODEL_BUILDERS = {
 
 }
 
-_AGENT_PARAM_BUILDERS = {
-    "CollisionFreeSpeedModel": lambda **kw: jps.CollisionFreeSpeedModelAgentParameters(**kw),
-    "CollisionFreeSpeedModelV2": lambda **kw: jps.CollisionFreeSpeedModelV2AgentParameters(**kw),
-    "CollisionFreeSpeedModelV3": lambda **kw: jps.CollisionFreeSpeedModelV3AgentParameters(**kw),
-    "WarpDriverModel": lambda **kw: jps.WarpDriverModelAgentParameters(**kw),
-    "GeneralizedCentrifugalForceModel": lambda **kw: jps.GeneralizedCentrifugalForceModelAgentParameters(
-        desired_speed=kw["desired_speed"],
-        a_v=1.0, a_min=kw["radius"], b_min=kw["radius"], b_max=kw["radius"] * 2,
-        position=kw["position"], journey_id=kw["journey_id"], stage_id=kw["stage_id"],
-    ),
-    "SocialForceModel": lambda **kw: jps.SocialForceModelAgentParameters(**kw),
-    "AnticipationVelocityModel": lambda **kw: jps.AnticipationVelocityModelAgentParameters(**kw),
-}
-
-
 def _build_model(model_type: str, sim_params: dict):
     builder = _MODEL_BUILDERS.get(model_type)
     if builder is None:
         raise ValueError(f"Unknown model type: {model_type}. Available: {list(_MODEL_BUILDERS)}")
     return builder(sim_params)
-
-
-def _build_agent_params(
-    model_type: str,
-    v0: float,
-    radius: float,
-    position: tuple[float, float],
-    journey_id: int,
-    stage_id: int,
-):
-    builder = _AGENT_PARAM_BUILDERS.get(model_type)
-    if builder is None:
-        raise ValueError(f"No agent params builder for model type: {model_type}")
-    return builder(
-        desired_speed=v0, radius=radius,
-        position=position, journey_id=journey_id, stage_id=stage_id,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -152,12 +118,6 @@ def _stable_flow_rng_offset(flow_dist: dict, fallback_index: int) -> int:
     if dist_index is not None:
         return int(dist_index) + 1
     return fallback_index + 1
-
-
-def _estimate_max_capacity(polygon: Polygon, max_radius: float) -> int:
-    effective_radius = max(max_radius, 0.1)
-    theoretical = polygon.area / (math.pi * effective_radius * effective_radius)
-    return max(1, math.floor(theoretical * 0.5))
 
 
 def _normalize_flow_schedule_entry(entry: dict) -> dict:
@@ -391,20 +351,20 @@ class Scenario:
             ax.text(cx, cy, label, ha="center", va="center",
                     fontsize=8, fontweight="bold", color=color, zorder=3)
 
-        for i, (did, d) in enumerate(self.distributions.items()):
+        for i, d in enumerate(self.distributions.values()):
             n = _distribution_agent_budget(d)
             _plot_element(d["coordinates"], palette["distribution"],
                           f"D{i}\n({n} ag)")
 
-        for i, (eid, e) in enumerate(self.exits.items()):
+        for i, e in enumerate(self.exits.values()):
             _plot_element(e["coordinates"], palette["exit"], f"E{i}", alpha=0.5)
 
-        for i, (zid, z) in enumerate(self.zones.items()):
+        for i, z in enumerate(self.zones.values()):
             sf = z.get("speed_factor", 1.0)
             _plot_element(z["coordinates"], palette["zone"],
                           f"Z{i}\n(sf={sf})", alpha=0.25)
 
-        for i, (sid, s) in enumerate(self.stages.items()):
+        for i, s in enumerate(self.stages.values()):
             wt = s.get("waiting_time", 0.0)
             _plot_element(s["coordinates"], palette["checkpoint"],
                           f"C{i}\n(w={wt}s)", alpha=0.3)
@@ -824,7 +784,7 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
 
         walkable_area = SimpleNamespace(polygon=scenario.walkable_polygon)
         global_parameters = SimpleNamespace(**scenario.sim_params)
-        _, _positions, agent_radii, spawning_info = initialize_simulation_from_json(
+        _, _, agent_radii, spawning_info = initialize_simulation_from_json(
             config_tmp.name,
             simulation,
             walkable_area,
@@ -1012,7 +972,6 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
                                         waypoint_routing=spawning_info.get("waypoint_routing", {}),
                                         seed=seed,
                                         agent_id=agent_id,
-                                        initial_position=(float(position[0]), float(position[1])),
                                         agent_radius=float(flow_params.get("radius", 0.2)),
                                     )
                                     if path_state:
