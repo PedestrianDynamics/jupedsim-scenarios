@@ -214,6 +214,39 @@ def _ensure_in_half_open_range(
     return float(value)
 
 
+def _normalize_polygon_coords(coordinates) -> list[list[float]]:
+    """Coerce ``coordinates`` to the closed list-of-[x, y] the schema uses.
+
+    Accepts a shapely ``Polygon`` (in which case the exterior ring is
+    used and interiors are dropped — additive ops don't support holes
+    on element polygons), or any iterable of length-2 (x, y) pairs.
+    The ring is closed automatically if the caller forgot the duplicate
+    end point.
+    """
+    from shapely.geometry import Polygon
+
+    if isinstance(coordinates, Polygon):
+        points = list(coordinates.exterior.coords)
+    else:
+        points = [tuple(p) for p in coordinates]
+
+    if len(points) < 3:
+        raise ValueError(
+            f"Polygon needs at least 3 distinct points, got {len(points)}."
+        )
+
+    for i, pt in enumerate(points):
+        if len(pt) != 2:
+            raise ValueError(
+                f"Polygon coordinate at index {i} must be (x, y), got {pt!r}."
+            )
+
+    if points[0] != points[-1]:
+        points = points + [points[0]]
+
+    return [[float(x), float(y)] for x, y in points]
+
+
 def _ensure_choice(name: str, value: Any, choices: set[str]) -> str:
     if value not in choices:
         raise ValueError(
@@ -600,6 +633,149 @@ class Scenario:
                 f"Available: {list(self.stages.keys())}"
             )
         return id
+
+    # -- additive ops --------------------------------------------------------
+    # Mirror the web-UI JSON schema under the hood so loaded scenarios can
+    # be extended without cracking open `raw`. Each ``add_*`` returns the
+    # assigned id; each ``remove_*`` pops by id. IDs are auto-generated
+    # along the schema's ``jps-{collection}_{n}`` convention if not given.
+
+    def add_distribution(
+        self,
+        coordinates,
+        *,
+        id: str | None = None,
+        number: int = 10,
+        **agent_params,
+    ) -> str:
+        """Add a spawn distribution. Returns its id.
+
+        ``coordinates`` accepts a shapely ``Polygon`` or any iterable of
+        ``(x, y)`` pairs. The polygon is automatically closed. Extra
+        keyword arguments are validated through the same allow-list as
+        ``set_agent_params`` so typos surface immediately.
+        """
+        coords = _normalize_polygon_coords(coordinates)
+        _ensure_positive_int("number", number)
+        # Reuse the agent-params allow-list + speed-alias migration so
+        # add_distribution behaves consistently with set_agent_params.
+        _reject_unknown_kwargs("add_distribution", agent_params, _AGENT_PARAM_KEYS)
+        agent_params = self._migrate_speed_aliases(agent_params)
+        dist_id = self._allocate_id("distributions", id)
+        params = {"number": number, "distribution_mode": "by_number"}
+        params.update(agent_params)
+        self.raw.setdefault("distributions", {})[dist_id] = {
+            "type": "polygon",
+            "coordinates": coords,
+            "parameters": params,
+            "journey_weights": [],
+        }
+        return dist_id
+
+    def add_exit(
+        self,
+        coordinates,
+        *,
+        id: str | None = None,
+        max_throughput: float = 0.0,
+    ) -> str:
+        """Add an exit polygon. Returns its id."""
+        coords = _normalize_polygon_coords(coordinates)
+        _ensure_non_negative_number("max_throughput", max_throughput)
+        exit_id = self._allocate_id("exits", id)
+        self.raw.setdefault("exits", {})[exit_id] = {
+            "type": "polygon",
+            "coordinates": coords,
+            "enable_throughput_throttling": max_throughput > 0,
+            "max_throughput": max_throughput,
+        }
+        return exit_id
+
+    def add_zone(
+        self,
+        coordinates,
+        *,
+        id: str | None = None,
+        speed_factor: float = 1.0,
+    ) -> str:
+        """Add a speed-modifier zone. Returns its id."""
+        coords = _normalize_polygon_coords(coordinates)
+        _ensure_non_negative_number("speed_factor", speed_factor)
+        zone_id = self._allocate_id("zones", id)
+        self.raw.setdefault("zones", {})[zone_id] = {
+            "type": "polygon",
+            "coordinates": coords,
+            "speed_factor": speed_factor,
+        }
+        return zone_id
+
+    def add_stage(
+        self,
+        coordinates,
+        *,
+        id: str | None = None,
+        waiting_time: float = 0.0,
+    ) -> str:
+        """Add a waypoint / checkpoint stage. Returns its id.
+
+        The web-UI JSON calls these "checkpoints"; the Python API uses
+        "stage" to match jupedsim's runtime vocabulary. ``raw`` keeps
+        the JSON name, so existing web exports load unchanged.
+        """
+        coords = _normalize_polygon_coords(coordinates)
+        _ensure_non_negative_number("waiting_time", waiting_time)
+        stage_id = self._allocate_id("checkpoints", id)
+        self.raw.setdefault("checkpoints", {})[stage_id] = {
+            "type": "polygon",
+            "coordinates": coords,
+            "waiting_time": waiting_time,
+        }
+        return stage_id
+
+    def remove_distribution(self, id: int | str) -> None:
+        id = self._resolve_distribution_id(id)
+        self.raw["distributions"].pop(id)
+
+    def remove_exit(self, id: str) -> None:
+        if id not in self.exits:
+            raise KeyError(f"Exit {id!r} not found. Available: {list(self.exits)}")
+        self.raw["exits"].pop(id)
+
+    def remove_zone(self, id: int | str) -> None:
+        id = self._resolve_zone_id(id)
+        self.raw["zones"].pop(id)
+
+    def remove_stage(self, id: int | str) -> None:
+        id = self._resolve_stage_id(id)
+        self.raw["checkpoints"].pop(id)
+
+    _RAW_KEY_BY_COLLECTION = {
+        "distributions": "distributions",
+        "exits": "exits",
+        "zones": "zones",
+        "checkpoints": "checkpoints",
+    }
+
+    def _allocate_id(self, collection: str, requested: str | None) -> str:
+        """Return a free id for ``collection`` (e.g. 'distributions')."""
+        bucket = self.raw.setdefault(self._RAW_KEY_BY_COLLECTION[collection], {})
+        if requested is not None:
+            if requested in bucket:
+                raise ValueError(
+                    f"id {requested!r} already exists in {collection!r}; "
+                    "remove it first or pick another id."
+                )
+            return requested
+        # Match the web UI's naming so round-trips look natural.
+        prefix = f"jps-{collection}_"
+        used_indices: list[int] = []
+        for key in bucket:
+            if key.startswith(prefix):
+                tail = key[len(prefix):]
+                if tail.isdigit():
+                    used_indices.append(int(tail))
+        next_index = (max(used_indices) + 1) if used_indices else 0
+        return f"{prefix}{next_index}"
 
     # -- discovery methods ---------------------------------------------------
 

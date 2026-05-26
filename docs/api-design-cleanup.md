@@ -127,7 +127,7 @@ the API; low-impact items are local polish.
 
 ### High impact
 
-- [ ] **R2.1. Python-native builder so the web JSON schema stops leaking**
+- [x] **R2.1. Python-native builder so the web JSON schema stops leaking** (additive-on-loaded scope)
   - Problem: scientists who never used the web UI still have to learn
     schema vocabulary (`raw["checkpoints"]`, `dist["parameters"]["number"]`,
     `walkable_area_wkt`) to do anything beyond what the setters cover.
