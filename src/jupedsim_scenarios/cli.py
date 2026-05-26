@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import shutil
 import sys
 
 try:
@@ -39,11 +38,24 @@ def _cmd_run(args: argparse.Namespace) -> int:
     except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    result = run_scenario(scenario, seed=args.seed)
-    # `keep_sqlite` is only true once the trajectory has been moved to --out.
-    # On the failure path the temp sqlite always gets cleaned, even if --out
-    # was requested — otherwise we'd leak a tempfile the caller can't find.
-    keep_sqlite = False
+
+    try:
+        result = run_scenario(
+            scenario,
+            seed=args.seed,
+            dt=args.dt,
+            every_nth_frame=args.every_nth_frame,
+            output_path=args.out,
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    # When --out is passed, run_scenario writes to that path directly,
+    # so we own the file and `cleanup()` is skipped. Without --out we
+    # used a tempfile and unlink it before returning so the user
+    # doesn't get a stale path in the summary.
+    keep_sqlite = args.out is not None
     try:
         if not result.success:
             print(
@@ -51,13 +63,6 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-
-        if args.out and result.sqlite_file:
-            target = pathlib.Path(args.out).resolve()
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(result.sqlite_file, target)
-            result.sqlite_file = str(target)
-            keep_sqlite = True
 
         summary = {
             "scenario": str(scenario_path),
@@ -105,6 +110,20 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Where to write the trajectory sqlite. If omitted, the file is "
         "created in a tempdir and deleted on exit (metrics are still printed).",
+    )
+    run.add_argument(
+        "--dt",
+        type=float,
+        default=None,
+        help="Iteration step in seconds (default: jupedsim's built-in, "
+        "currently 0.01).",
+    )
+    run.add_argument(
+        "--every-nth-frame",
+        type=int,
+        default=10,
+        help="Trajectory writer stride. Default 10 (≈ 10 fps at dt=0.01); "
+        "set to 1 to capture every iteration.",
     )
     run.set_defaults(func=_cmd_run)
     return parser
