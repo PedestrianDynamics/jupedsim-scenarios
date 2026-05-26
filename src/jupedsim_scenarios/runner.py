@@ -417,12 +417,16 @@ class Scenario:
 
         Round-trip is value-preserving for everything the public API
         touches (geometry, seed, model_type, sim_params, exits,
-        distributions, stages, zones, journeys). Anything you stored
-        in ``scenario.raw`` directly survives too.
+        distributions, stages, zones, journeys) provided every value
+        is JSON-serializable. The default :func:`json.dumps` encoder
+        is used with no fallback, so an unsupported type stuffed into
+        ``scenario.raw`` (or ``sim_params``) raises ``TypeError`` at
+        save time rather than silently stringifying — surfacing the
+        mistake before the round-trip lies about what was preserved.
         """
         data = dict(self._synced_raw())
         data["walkable_area_wkt"] = self.walkable_area_wkt
-        text = json.dumps(data, indent=2, default=str)
+        text = json.dumps(data, indent=2)
         if path is None:
             return text
         target = pathlib.Path(path)

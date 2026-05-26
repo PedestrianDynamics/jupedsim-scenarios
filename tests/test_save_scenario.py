@@ -108,6 +108,21 @@ def test_roundtrip_via_to_json_string(tmp_path):
     ]["number"] == 5
 
 
+def test_to_json_raises_on_non_serializable_raw_value():
+    # Copilot PR #40 review: to_json must NOT silently stringify
+    # unsupported types via default=str. Anything that isn't
+    # JSON-serializable should raise TypeError at save time so the
+    # mistake surfaces immediately instead of producing a "round-trip"
+    # that lies about what survived.
+    class _NotJsonable:
+        pass
+
+    s = _scenario()
+    s.sim_params["bad"] = _NotJsonable()
+    with pytest.raises(TypeError):
+        s.to_json()
+
+
 def test_loaded_scenario_runs_after_roundtrip(corridor_scenario, tmp_path):
     # End-to-end: an existing scenario (with journeys etc.) roundtrips
     # through save_scenario + load_scenario and still simulates.

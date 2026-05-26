@@ -244,7 +244,7 @@ rules. Items here target 0.6.
   metadata-only) or rewrite the docstring. Implement is the right
   call — saved sweeps are write-only otherwise.
 
-- [ ] **R3.2. No `save_scenario` / `Scenario.to_json()`** — `runner.py`.
+- [x] **R3.2. No `save_scenario` / `Scenario.to_json()`** — `runner.py`.
   R2.1's `add_*` methods let users build scenarios in Python. There's
   no public path back to disk; only the private `_synced_raw()`.
   Add `Scenario.to_json(path)` and `save_scenario(scenario, path)`
