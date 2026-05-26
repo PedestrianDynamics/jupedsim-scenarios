@@ -40,7 +40,7 @@ import pathlib
 import shutil
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, overload
 
 from joblib import Parallel, delayed
 
@@ -93,7 +93,11 @@ class SweepResult:
     def __iter__(self):
         return iter(self.trials)
 
-    def __getitem__(self, key):
+    @overload
+    def __getitem__(self, key: int) -> Trial: ...
+    @overload
+    def __getitem__(self, key: slice) -> list[Trial]: ...
+    def __getitem__(self, key: int | slice) -> Trial | list[Trial]:
         """Index/slice into the trials list.
 
         ``sweep[0]`` returns the first trial; ``sweep[0:3]`` returns a

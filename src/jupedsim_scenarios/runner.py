@@ -856,10 +856,12 @@ class Scenario:
 
         clone = copy.deepcopy(self)
         # Only init=True dataclass fields are overridable. Without this
-        # guard, ``copy(plot=lambda: ...)`` would replace a method via
-        # the loose ``hasattr`` check and ``copy(max_simulation_time=…)``
-        # would set the property's underlying private name instead of
-        # raising — both are subtle ways for a typo to escape.
+        # guard the loose ``hasattr`` check would let
+        # ``copy(plot=lambda: ...)`` shadow a method by creating an
+        # instance attribute, or ``copy(walkable_polygon=...)`` shadow
+        # the cached-property getter. Both are silent typo escapes.
+        # (Property setters like ``max_simulation_time`` would actually
+        # fire correctly via setattr — they're not the hazard.)
         allowed = {f.name for f in dataclass_fields(self) if f.init}
         for key, value in overrides.items():
             if key not in allowed:

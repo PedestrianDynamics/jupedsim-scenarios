@@ -257,7 +257,7 @@ rules. Items here target 0.6.
 
 ### Medium impact
 
-- [x] **R3.4. `remove_exit` only accepts string ids** — `runner.py:739`.
+- [x] **R3.4. `remove_exit` only accepts string ids** — `runner.py` (`Scenario.remove_exit`).
   Other `remove_*` methods accept int-or-string via `_resolve_*_id`.
   Add `_resolve_exit_id` and route `remove_exit` through it.
 
