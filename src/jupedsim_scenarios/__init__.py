@@ -10,12 +10,19 @@ This package replaced the former `backend/core/` mirror. Once
 module's contents will migrate to thin wrappers around the upstream API.
 """
 
-from .runner import Scenario, ScenarioResult, load_scenario, run_scenario
+from .runner import (
+    Scenario,
+    ScenarioResult,
+    ScenarioRunner,
+    load_scenario,
+    run_scenario,
+)
 from .sweep import SweepResult, Trial, run_sweep, run_sweep_from_factory
 
 __all__ = [
     "Scenario",
     "ScenarioResult",
+    "ScenarioRunner",
     "SweepResult",
     "Trial",
     "load_scenario",

@@ -1505,163 +1505,249 @@ def _accept_throughput(
     return True
 
 
-def run_scenario(
-    scenario: Scenario,
-    *,
-    seed: int | None = None,
-    dt: float | None = None,
-    every_nth_frame: int = 10,
-    output_path: str | pathlib.Path | None = None,
-) -> ScenarioResult:
-    """Run a scenario with the same shared setup/runtime semantics as the web app.
+class ScenarioRunner:
+    """Drive a scenario tick-by-tick with inspection between steps.
 
-    Parameters
-    ----------
-    scenario
-        The scenario to simulate.
-    seed
-        Override the scenario's seed. ``None`` keeps ``scenario.seed``.
-    dt
-        Iteration step in seconds. ``None`` uses jupedsim's default
-        (currently 0.01s). Smaller values cost more CPU; larger values
-        risk instability.
-    every_nth_frame
-        Trajectory writer stride. ``10`` keeps the historical default
-        (10 fps at dt=0.01). Set to ``1`` to capture every iteration.
-    output_path
-        Where to write the trajectory SQLite file. ``None`` puts it in
-        a tempfile that ``ScenarioResult.cleanup()`` removes. Pass a
-        path to keep the file at a known location.
+    Matches the imperative shape of ``jupedsim.Simulation`` so users
+    familiar with the lower-level API feel at home::
+
+        with ScenarioRunner(scenario, seed=42) as runner:
+            runner.run_until(10.0)
+            print(runner.elapsed_time, runner.agent_count)
+            # mutate the simulation or scenario here, then continue:
+            runner.run_until(20.0)
+            result = runner.result()
+
+    Outside a context manager you can call ``close()`` directly; the
+    sqlite trajectory file survives ``close()`` so the returned
+    ``ScenarioResult`` keeps working.
     """
-    seed = seed if seed is not None else scenario.seed
-    _ensure_positive_int("every_nth_frame", every_nth_frame)
-    if dt is not None:
-        _ensure_positive_number("dt", dt)
 
-    model = _build_model(scenario.model_type, scenario.sim_params)
+    def __init__(
+        self,
+        scenario: Scenario,
+        *,
+        seed: int | None = None,
+        dt: float | None = None,
+        every_nth_frame: int = 10,
+        output_path: str | pathlib.Path | None = None,
+    ):
+        _ensure_positive_int("every_nth_frame", every_nth_frame)
+        if dt is not None:
+            _ensure_positive_number("dt", dt)
+        self._scenario = scenario
+        self._seed = seed if seed is not None else scenario.seed
+        self._every_nth_frame = every_nth_frame
+        self._closed = False
 
-    if output_path is None:
-        sqlite_tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
-        output_file = sqlite_tmp.name
-        sqlite_tmp.close()
-    else:
-        output_file = str(pathlib.Path(output_path).resolve())
-        pathlib.Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+        model = _build_model(scenario.model_type, scenario.sim_params)
 
-    writer = jps.SqliteTrajectoryWriter(
-        output_file=pathlib.Path(output_file),
-        every_nth_frame=every_nth_frame,
-    )
-    sim_kwargs: dict[str, Any] = dict(
-        model=model,
-        geometry=scenario.walkable_polygon,
-        trajectory_writer=writer,
-    )
-    if dt is not None:
-        sim_kwargs["dt"] = dt
-    simulation = jps.Simulation(**sim_kwargs)
+        if output_path is None:
+            sqlite_tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
+            self._output_file: str = sqlite_tmp.name
+            sqlite_tmp.close()
+            self._owns_output = True
+        else:
+            self._output_file = str(pathlib.Path(output_path).resolve())
+            pathlib.Path(self._output_file).parent.mkdir(parents=True, exist_ok=True)
+            self._owns_output = False
 
-    config_tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
-    try:
-        json.dump(scenario._synced_raw(), config_tmp, indent=2)
-        config_tmp.close()
+        # Everything below this point can fail; on failure we tear down
+        # the writer, the config tempfile, and the runner-owned
+        # trajectory tempfile so __init__ never leaks resources.
+        try:
+            self._writer = jps.SqliteTrajectoryWriter(
+                output_file=pathlib.Path(self._output_file),
+                every_nth_frame=every_nth_frame,
+            )
+            sim_kwargs: dict[str, Any] = dict(
+                model=model,
+                geometry=scenario.walkable_polygon,
+                trajectory_writer=self._writer,
+            )
+            if dt is not None:
+                sim_kwargs["dt"] = dt
+            self._simulation = jps.Simulation(**sim_kwargs)
 
-        walkable_area = SimpleNamespace(polygon=scenario.walkable_polygon)
-        global_parameters = SimpleNamespace(**scenario.sim_params)
-        _, _, agent_radii, spawning_info = initialize_simulation_from_json(
-            config_tmp.name,
-            simulation,
-            walkable_area,
-            seed=seed,
-            model_type=scenario.model_type,
-            global_parameters=global_parameters,
+            config_tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+            self._config_tmp_path: str = config_tmp.name
+            json.dump(scenario._synced_raw(), config_tmp, indent=2)
+            config_tmp.close()
+
+            walkable_area = SimpleNamespace(polygon=scenario.walkable_polygon)
+            global_parameters = SimpleNamespace(**scenario.sim_params)
+            _, _, agent_radii, spawning_info = initialize_simulation_from_json(
+                self._config_tmp_path,
+                self._simulation,
+                walkable_area,
+                seed=self._seed,
+                model_type=scenario.model_type,
+                global_parameters=global_parameters,
+            )
+        except Exception:
+            self._close_partial_init()
+            raise
+
+        self._agent_radii = agent_radii
+        self._spawning_info = spawning_info
+        self._initial_agent_count = int(self._simulation.agent_count())
+
+        # Per-tick mutable state, hoisted from the previous monolithic
+        # run_scenario into instance attributes so step() can mutate
+        # them across calls.
+        self._has_flow_spawning: bool = spawning_info.get("has_flow_spawning", False)
+        self._num_agents_per_source: list[int] = spawning_info.get(
+            "num_agents_per_source", []
         )
-
-        initial_agent_count = simulation.agent_count()
-        has_flow_spawning = spawning_info.get("has_flow_spawning", False)
-        num_agents_per_source = spawning_info.get("num_agents_per_source", [])
-        agent_counter_per_source = spawning_info.get("agent_counter_per_source", [])
-        flow_distributions = spawning_info.get("flow_distributions", [])
-        has_premovement = spawning_info.get("has_premovement", False)
-        premovement_times = spawning_info.get("premovement_times", {})
-        direct_steering_info = spawning_info.get("direct_steering_info", {})
-        agent_wait_info = spawning_info.get("agent_wait_info", {})
-        checkpoint_throughput_tracker: dict[Any, dict[str, float]] = {}
-        agent_speed_state: dict[int, dict[str, Any]] = {}
-        flow_variant_rng = random.Random(seed)
+        self._agent_counter_per_source: list[int] = spawning_info.get(
+            "agent_counter_per_source", []
+        )
+        self._flow_distributions: list[dict] = spawning_info.get("flow_distributions", [])
+        self._has_premovement: bool = spawning_info.get("has_premovement", False)
+        self._premovement_times: dict = spawning_info.get("premovement_times", {})
+        self._direct_steering_info: dict = spawning_info.get("direct_steering_info", {})
+        self._agent_wait_info: dict = spawning_info.get("agent_wait_info", {})
+        self._checkpoint_throughput_tracker: dict[Any, dict[str, float]] = {}
+        self._agent_speed_state: dict[int, dict[str, Any]] = {}
+        self._flow_variant_rng = random.Random(self._seed)
         # Per-source RNGs for flow-spawn agent parameter sampling. Seed
         # from a stable distribution identity (dist_key/dist_index) and
         # use np.random.RandomState to match services/simulation_service.py
         # — given the same seed, both runners must produce the same
         # sampled sequence.
-        flow_param_rngs = {
-            i: np.random.RandomState(seed + _stable_flow_rng_offset(d, i))
-            for i, d in enumerate(flow_distributions)
+        self._flow_param_rngs = {
+            i: np.random.RandomState(self._seed + _stable_flow_rng_offset(d, i))
+            for i, d in enumerate(self._flow_distributions)
         }
         # Cache one (radius, v0) per source while a spawn is pending so
         # that an agent that fails all candidate positions reuses the
         # same draw on the next attempt instead of being redrawn (which
         # biases the realized distribution).
-        pending_flow_samples: dict[int, tuple[float, float]] = {}
+        self._pending_flow_samples: dict[int, tuple[float, float]] = {}
 
-        while simulation.elapsed_time() < scenario.max_simulation_time and (
-            simulation.agent_count() > 0
-            or (
-                has_flow_spawning
-                and sum(agent_counter_per_source) < sum(num_agents_per_source)
+    # -- introspection ------------------------------------------------
+
+    @property
+    def elapsed_time(self) -> float:
+        return float(self._simulation.elapsed_time())
+
+    @property
+    def agent_count(self) -> int:
+        return int(self._simulation.agent_count())
+
+    @property
+    def seed(self) -> int:
+        return self._seed
+
+    def agents(self):
+        """Iterate over live agents (delegates to ``jupedsim.Simulation.agents``)."""
+        return self._simulation.agents()
+
+    @property
+    def simulation(self):
+        """The underlying ``jupedsim.Simulation``. Use this when the higher-level
+        API doesn't cover what you need; mutate at your own risk."""
+        return self._simulation
+
+    def _should_continue(self) -> bool:
+        if self.agent_count > 0:
+            return True
+        if not self._has_flow_spawning:
+            return False
+        return sum(self._agent_counter_per_source) < sum(self._num_agents_per_source)
+
+    def _check_open(self) -> None:
+        """Reject step/run_until/result after close()."""
+        if self._closed:
+            raise RuntimeError(
+                "ScenarioRunner is closed: the trajectory writer has been "
+                "released and the config tempfile removed. Create a new "
+                "ScenarioRunner to run again."
             )
-        ):
-            current_time = simulation.elapsed_time()
 
-            if has_flow_spawning:
-                _spawn_flow_agents(
-                    simulation=simulation,
-                    current_time=current_time,
-                    seed=seed,
-                    spawning_info=spawning_info,
-                    direct_steering_info=direct_steering_info,
-                    agent_wait_info=agent_wait_info,
-                    agent_radii=agent_radii,
-                    flow_variant_rng=flow_variant_rng,
-                    flow_param_rngs=flow_param_rngs,
-                    pending_flow_samples=pending_flow_samples,
-                )
+    # -- stepping -----------------------------------------------------
 
-            if has_premovement:
-                _apply_premovement(
-                    simulation=simulation,
-                    current_time=current_time,
-                    premovement_times=premovement_times,
-                    agent_speed_state=agent_speed_state,
-                )
+    def step(self) -> None:
+        """Advance one iteration tick (all per-tick helpers + simulation.iterate)."""
+        self._check_open()
+        current_time = self._simulation.elapsed_time()
+        if self._has_flow_spawning:
+            _spawn_flow_agents(
+                simulation=self._simulation,
+                current_time=current_time,
+                seed=self._seed,
+                spawning_info=self._spawning_info,
+                direct_steering_info=self._direct_steering_info,
+                agent_wait_info=self._agent_wait_info,
+                agent_radii=self._agent_radii,
+                flow_variant_rng=self._flow_variant_rng,
+                flow_param_rngs=self._flow_param_rngs,
+                pending_flow_samples=self._pending_flow_samples,
+            )
+        if self._has_premovement:
+            _apply_premovement(
+                simulation=self._simulation,
+                current_time=current_time,
+                premovement_times=self._premovement_times,
+                agent_speed_state=self._agent_speed_state,
+            )
+        if self._direct_steering_info:
+            _advance_direct_steering(
+                simulation=self._simulation,
+                agent_speed_state=self._agent_speed_state,
+                direct_steering_info=self._direct_steering_info,
+            )
+        if self._direct_steering_info and self._agent_wait_info:
+            _advance_path_following(
+                simulation=self._simulation,
+                current_time=current_time,
+                agent_wait_info=self._agent_wait_info,
+                agent_speed_state=self._agent_speed_state,
+                direct_steering_info=self._direct_steering_info,
+                checkpoint_throughput_tracker=self._checkpoint_throughput_tracker,
+            )
+        self._simulation.iterate()
 
-            if direct_steering_info:
-                _advance_direct_steering(
-                    simulation=simulation,
-                    agent_speed_state=agent_speed_state,
-                    direct_steering_info=direct_steering_info,
-                )
+    def run_until(self, target_time: float | None = None) -> None:
+        """Run forward until ``elapsed_time >= target_time``.
 
-            if direct_steering_info and agent_wait_info:
-                _advance_path_following(
-                    simulation=simulation,
-                    current_time=current_time,
-                    agent_wait_info=agent_wait_info,
-                    agent_speed_state=agent_speed_state,
-                    direct_steering_info=direct_steering_info,
-                    checkpoint_throughput_tracker=checkpoint_throughput_tracker,
-                )
+        ``target_time=None`` (default) means ``scenario.max_simulation_time``
+        — i.e. "run to completion". Stops early once every agent has
+        evacuated (and any flow spawning has emptied its budget).
 
-            simulation.iterate()
+        ``target_time`` is clamped to ``scenario.max_simulation_time``
+        so callers can't drive the simulation past the scenario's
+        configured horizon by accident. ``target_time=0`` is accepted
+        and is a no-op at ``t=0``.
+        """
+        self._check_open()
+        if target_time is None:
+            target_time = self._scenario.max_simulation_time
+        _ensure_non_negative_number("target_time", target_time)
+        target_time = min(target_time, self._scenario.max_simulation_time)
+        while self.elapsed_time < target_time and self._should_continue():
+            self.step()
 
-        evacuation_time = simulation.elapsed_time()
-        remaining = simulation.agent_count()
-        total_agents = initial_agent_count
-        if has_flow_spawning:
-            total_agents += sum(agent_counter_per_source)
+    # -- result + teardown -------------------------------------------
+
+    def result(self) -> ScenarioResult:
+        """Build a ``ScenarioResult`` reflecting the runner's current state.
+
+        Safe to call multiple times — each invocation snapshots the
+        live metrics. The runner does NOT close the writer when
+        ``result()`` is called, so subsequent ``step()`` / ``run_until``
+        calls keep appending to the same sqlite file.
+        """
+        self._check_open()
+        evacuation_time = float(self._simulation.elapsed_time())
+        remaining = int(self._simulation.agent_count())
+        total_agents = self._initial_agent_count
+        if self._has_flow_spawning:
+            total_agents += sum(self._agent_counter_per_source)
+        max_time = self._scenario.max_simulation_time
 
         all_evacuated = remaining == 0
-        timed_out = evacuation_time >= scenario.max_simulation_time and not all_evacuated
+        timed_out = evacuation_time >= max_time and not all_evacuated
         if all_evacuated:
             status = "completed"
             message = "All agents evacuated before reaching the maximum simulation time."
@@ -1670,14 +1756,13 @@ def run_scenario(
             message = "Simulation reached max_simulation_time with remaining agents."
         else:
             status = "incomplete"
-            message = "Simulation stopped before all agents evacuated and before max_simulation_time."
+            message = (
+                "Simulation stopped before all agents evacuated and before "
+                "max_simulation_time."
+            )
 
-        # Trajectory frame rate = simulation step rate / writer stride.
-        # Pulled from the live simulation/writer so callers see the true
-        # rate even if the defaults ever change.
-        dt = float(simulation.delta_time())
-        frame_rate = 1.0 / (dt * every_nth_frame) if dt > 0 else 0.0
-
+        dt = float(self._simulation.delta_time())
+        frame_rate = 1.0 / (dt * self._every_nth_frame) if dt > 0 else 0.0
         metrics = {
             "success": all_evacuated,
             "status": status,
@@ -1689,24 +1774,89 @@ def run_scenario(
             "all_evacuated": all_evacuated,
             "frame_rate": frame_rate,
             "dt": dt,
-            "seed": seed,
-            "walkable_polygon": scenario.walkable_polygon,
+            "seed": self._seed,
+            "walkable_polygon": self._scenario.walkable_polygon,
         }
+        return ScenarioResult(metrics=metrics, sqlite_file=self._output_file)
 
-        return ScenarioResult(metrics=metrics, sqlite_file=output_file)
-    except Exception:
-        # Clean up SQLite temp file on failure
+    def _close_partial_init(self) -> None:
+        """Best-effort cleanup for __init__ failure paths.
+
+        Closes whatever was constructed so far and removes the
+        runner-owned trajectory tempfile so a failed __init__ doesn't
+        leak. Safe to call multiple times.
+        """
+        writer = getattr(self, "_writer", None)
+        if writer is not None:
+            try:
+                writer.close()
+            except Exception:
+                pass
+        config_path = getattr(self, "_config_tmp_path", None)
+        if config_path is not None:
+            try:
+                os.unlink(config_path)
+            except OSError:
+                pass
+        if self._owns_output:
+            try:
+                os.unlink(self._output_file)
+            except OSError:
+                pass
+        self._closed = True
+
+    def close(self) -> None:
+        """Close the trajectory writer and clean up the config tempfile.
+
+        Idempotent. Does NOT remove the sqlite trajectory file — call
+        ``ScenarioResult.cleanup()`` for that, or just keep the file.
+        """
+        if self._closed:
+            return
         try:
-            os.unlink(output_file)
-        except (OSError, UnboundLocalError):
-            pass
-        raise
-    finally:
-        try:
-            writer.close()
+            self._writer.close()
         except Exception:
             pass
         try:
-            os.unlink(config_tmp.name)
+            os.unlink(self._config_tmp_path)
         except Exception:
             pass
+        self._closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        del exc_type, tb
+        try:
+            self.close()
+        finally:
+            # On exception inside the with block, remove the runner-owned
+            # trajectory tempfile so failed runs don't leak. Matches the
+            # previous run_scenario behaviour.
+            if exc is not None and self._owns_output:
+                try:
+                    os.unlink(self._output_file)
+                except OSError:
+                    pass
+        return False
+
+
+def run_scenario(
+    scenario: Scenario,
+    *,
+    seed: int | None = None,
+    dt: float | None = None,
+    every_nth_frame: int = 10,
+    output_path: str | pathlib.Path | None = None,
+) -> ScenarioResult:
+    """Run a scenario to completion. Thin wrapper around ``ScenarioRunner``."""
+    with ScenarioRunner(
+        scenario,
+        seed=seed,
+        dt=dt,
+        every_nth_frame=every_nth_frame,
+        output_path=output_path,
+    ) as runner:
+        runner.run_until()
+        return runner.result()
