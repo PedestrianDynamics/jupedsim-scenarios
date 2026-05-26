@@ -6,12 +6,15 @@ mutations are applied via user-supplied callables so the sweep doesn't
 need to know about the scenario's internal mutator surface — anything
 that mutates the scenario in place works:
 
+    def _set_model(s, v):
+        s.model_type = v
+
     sweep = run_sweep(
         base,
-        axes={"v0": [0.8, 1.2], "model": ["CollisionFreeSpeedModel"]},
+        axes={"desired_speed": [0.8, 1.2], "model": ["CollisionFreeSpeedModel"]},
         apply={
-            "v0":    lambda s, v: s.set_agent_params(0, desired_speed=v),
-            "model": lambda s, v: s.set_model_type(v),
+            "desired_speed": lambda s, v: s.set_agent_params(0, desired_speed=v),
+            "model":         _set_model,
         },
         seeds=range(40, 50),
     )

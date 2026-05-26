@@ -141,7 +141,7 @@ the API; low-impact items are local polish.
   - Acceptance: a notebook can build, run, and analyze a scenario
     without `import json` and without touching `.raw`.
 
-- [ ] **R2.2. Replace scalar `set_*` wrappers with attribute setters**
+- [x] **R2.2. Replace scalar `set_*` wrappers with attribute setters**
   - Problem: after we removed `__setattr__` magic, `scenario.seed = 42`
     does NOT update `raw`, but `scenario.set_seed(42)` does. Two ways
     to do one thing with different side effects — the exact
