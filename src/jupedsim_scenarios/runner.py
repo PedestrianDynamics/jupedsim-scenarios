@@ -1518,6 +1518,14 @@ class ScenarioRunner:
             runner.run_until(20.0)
             result = runner.result()
 
+    To run all the way to ``scenario.max_simulation_time``, call
+    ``run_until()`` with no argument (the loop also stops early once
+    every agent has evacuated)::
+
+        with ScenarioRunner(scenario, seed=42) as runner:
+            runner.run_until()
+            result = runner.result()
+
     Outside a context manager you can call ``close()`` directly; the
     sqlite trajectory file survives ``close()`` so the returned
     ``ScenarioResult`` keeps working.
