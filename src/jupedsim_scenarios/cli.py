@@ -47,15 +47,17 @@ def _cmd_run(args: argparse.Namespace) -> int:
             every_nth_frame=args.every_nth_frame,
             output_path=args.out,
         )
-    except ValueError as exc:
+    # Either invalid args (ValueError) or filesystem trouble writing the
+    # trajectory (OSError / PermissionError on parent.mkdir / sqlite open)
+    # surface as a friendly exit-2 instead of a traceback.
+    except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    # When --out is passed, run_scenario writes to that path directly,
-    # so we own the file and `cleanup()` is skipped. Without --out we
-    # used a tempfile and unlink it before returning so the user
-    # doesn't get a stale path in the summary.
-    keep_sqlite = args.out is not None
+    # Keep the sqlite only when --out was given AND the run succeeded.
+    # On the failure path with --out, clean up so we don't leave a
+    # partial / misleading trajectory at a known location.
+    keep_sqlite = args.out is not None and result.success
     try:
         if not result.success:
             print(
