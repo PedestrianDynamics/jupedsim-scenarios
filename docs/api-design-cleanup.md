@@ -155,7 +155,7 @@ the API; low-impact items are local polish.
     (or deprecated); `scenario.seed = 42` updates both the field and
     the mirror; tests cover the property-setter path.
 
-- [ ] **R2.3. Kwarg typo guard on `set_model_params` / `set_agent_params`**
+- [x] **R2.3. Kwarg typo guard on `set_model_params` / `set_agent_params`**
   - Problem: ``set_agent_params(0, radius_dist="gaussian")`` (typo
     for ``radius_distribution``) currently writes the dead key and
     succeeds silently. Same for `set_model_params` with a typo'd
