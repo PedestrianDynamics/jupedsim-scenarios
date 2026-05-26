@@ -232,7 +232,7 @@ def _ensure_choice(name: str, value: Any, choices: set[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(repr=False)
 class Scenario:
     """A loaded scenario ready for inspection and execution."""
 
@@ -317,11 +317,49 @@ class Scenario:
         params["model_type"] = self.model_type
         return self.raw
 
-    def summary(self) -> str:
-        total_agents = sum(
-            _distribution_agent_budget(d)
-            for d in self.distributions.values()
+    def _total_agents(self) -> int:
+        return sum(
+            _distribution_agent_budget(d) for d in self.distributions.values()
         )
+
+    def __repr__(self) -> str:
+        # One-line, autocomplete-friendly debug repr. The default
+        # dataclass repr dumps `raw` (often a multi-kilobyte JSON dict)
+        # which is unreadable in a notebook cell or a stack trace.
+        return (
+            f"Scenario(model={self.model_type!r}, seed={self.seed}, "
+            f"agents≈{self._total_agents()}, exits={len(self.exits)}, "
+            f"distributions={len(self.distributions)}, "
+            f"stages={len(self.stages)}, zones={len(self.zones)})"
+        )
+
+    def _repr_html_(self) -> str:
+        """Notebook-friendly summary table (Jupyter calls this automatically)."""
+        rows = [
+            ("Source", self.source_path or "(in-memory)"),
+            ("Model", self.model_type),
+            ("Seed", self.seed),
+            ("Max time", f"{self.max_simulation_time}s"),
+            ("Exits", len(self.exits)),
+            ("Distributions", len(self.distributions)),
+            ("Stages", len(self.stages)),
+            ("Zones", len(self.zones)),
+            ("Journeys", len(self.journeys)),
+            ("Agents", f"~{self._total_agents()}"),
+        ]
+        body = "".join(
+            f"<tr><th style='text-align:left;padding-right:1em'>{k}</th>"
+            f"<td>{v}</td></tr>"
+            for k, v in rows
+        )
+        return (
+            "<table style='border-collapse:collapse'>"
+            "<caption style='text-align:left;font-weight:bold'>Scenario</caption>"
+            f"{body}</table>"
+        )
+
+    def summary(self) -> str:
+        total_agents = self._total_agents()
         journey_sequence = []
         journeys = self.raw.get("journeys", [])
         if journeys:

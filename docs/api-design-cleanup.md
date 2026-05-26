@@ -222,7 +222,7 @@ the API; low-impact items are local polish.
 
 ### Low impact
 
-- [ ] **R2.7. Useful `__repr__` (+ `_repr_html_` for notebooks)**
+- [x] **R2.7. Useful `__repr__` (+ `_repr_html_` for notebooks)**
   - Problem: ``repr(scenario)`` dumps the entire `raw` dict in a
     Jupyter cell. ``summary()`` is what users actually want — but
     Jupyter shows `__repr__`, not the result of a method call.
