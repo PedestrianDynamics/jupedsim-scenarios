@@ -208,7 +208,7 @@ the API; low-impact items are local polish.
 
 ### Medium impact
 
-- [ ] **R2.6. Analysis surface on `ScenarioResult`**
+- [x] **R2.6. Analysis surface on `ScenarioResult`** (adapter only — pedpy stays required)
   - Problem: ``trajectory_dataframe()`` is the entire analysis API.
     Scientists wanting pedpy-style densities / flows have to convert
     manually and reach for pedpy themselves.

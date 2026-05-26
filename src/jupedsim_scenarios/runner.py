@@ -900,6 +900,30 @@ class ScenarioResult:
             con.close()
         return df
 
+    def as_pedpy_trajectory(self):
+        """Return the trajectory as a ``pedpy.TrajectoryData``.
+
+        Thin adapter so scientists doing pedpy analysis don't have to
+        rebuild the dataframe and look up the frame rate themselves::
+
+            result = run_scenario(scenario, seed=42)
+            traj = result.as_pedpy_trajectory()
+            pedpy.compute_classic_density(traj=traj, ...)
+
+        pedpy is already a hard dependency of this package (used
+        internally for ``WalkableArea`` etc.) so the import is direct.
+        """
+        import pedpy
+
+        df = self.trajectory_dataframe()
+        # pedpy only needs id, frame, x, y. The orientation columns
+        # would be silently ignored, but slicing keeps the contract
+        # tight and avoids surprises if pedpy ever tightens its schema.
+        return pedpy.TrajectoryData(
+            data=df[["id", "frame", "x", "y"]],
+            frame_rate=self.frame_rate,
+        )
+
     def cleanup(self) -> int:
         """Delete the temporary SQLite trajectory file.
 
