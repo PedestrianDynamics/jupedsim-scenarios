@@ -74,3 +74,17 @@ def test_set_model_params_unknown_raises():
     s = _scenario()
     with pytest.raises(TypeError, match="received unknown keyword arguments"):
         s.set_model_params(definitely_not_a_param=0.1)
+
+
+def test_set_agent_count_routes_through_set_agent_params():
+    # R3.3: set_agent_count is now a thin wrapper over set_agent_params,
+    # so it inherits the same positive-int validation and forces
+    # distribution_mode = "by_number".
+    s = _scenario()
+    s.set_agent_count("d0", 7)
+    params = s.distributions["d0"]["parameters"]
+    assert params["number"] == 7
+    assert params["distribution_mode"] == "by_number"
+
+    with pytest.raises(ValueError, match="positive integer"):
+        s.set_agent_count("d0", 0)

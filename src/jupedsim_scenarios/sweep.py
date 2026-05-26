@@ -125,10 +125,11 @@ class SweepResult:
     def save(self, path: str | pathlib.Path) -> None:
         """Persist sweep metadata (axes, seeds, per-trial paths + metrics) as JSON.
 
-        The trajectory sqlites themselves are NOT moved — they stay where
-        `run_sweep`'s `output_dir` put them. `load()` reattaches metadata to
-        the sqlite files; if the sqlites are gone, the loaded result is
-        metadata-only.
+        The trajectory sqlites themselves are NOT moved — they stay
+        where ``run_sweep``'s ``output_dir`` put them. Pair with
+        :meth:`SweepResult.load` to reattach the metadata to the
+        on-disk sqlites later; if the sqlites are gone, the loaded
+        result is still useful for the metrics dataframe.
         """
         data = {
             "axes": {k: list(v) for k, v in self.axes.items()},
@@ -145,6 +146,36 @@ class SweepResult:
             ],
         }
         pathlib.Path(path).write_text(json.dumps(data, indent=2, default=str))
+
+    @classmethod
+    def load(cls, path: str | pathlib.Path) -> SweepResult:
+        """Rebuild a ``SweepResult`` from a JSON written by :meth:`save`.
+
+        Trial sqlite paths are kept verbatim — if the files moved or
+        were cleaned up, ``trial.result.sqlite_file`` still points at
+        the old location and ``trajectory_dataframe`` will raise
+        ``FileNotFoundError``. The metrics-derived properties on
+        ``ScenarioResult`` (success, evacuation_time, …) work either
+        way because they read from the metrics dict.
+        """
+        data = json.loads(pathlib.Path(path).read_text())
+        trials = [
+            Trial(
+                index=t["index"],
+                axis_values=dict(t["axis_values"]),
+                seed=t["seed"],
+                result=ScenarioResult(
+                    metrics=dict(t["metrics"]),
+                    sqlite_file=t.get("sqlite_path"),
+                ),
+            )
+            for t in data["trials"]
+        ]
+        return cls(
+            trials=trials,
+            axes={k: list(v) for k, v in data.get("axes", {}).items()},
+            seeds=list(data.get("seeds", [])),
+        )
 
 
 def _validate_axes(

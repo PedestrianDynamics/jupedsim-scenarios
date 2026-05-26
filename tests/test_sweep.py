@@ -119,6 +119,63 @@ def test_sweep_result_save_roundtrip(tmp_path):
     assert data["trials"][0]["axis_values"] == {"v0": 1.2}
 
 
+def test_sweep_result_load_reattaches_metadata(tmp_path):
+    # Save / load roundtrip rebuilds the SweepResult with the same
+    # axes, seeds, trials, and metrics. Sqlite paths are preserved
+    # verbatim — missing files raise on demand, not at load.
+    original = SweepResult(
+        trials=[
+            Trial(
+                index=0,
+                axis_values={"v0": 1.2},
+                seed=7,
+                result=ScenarioResult(
+                    metrics={
+                        "seed": 7,
+                        "success": True,
+                        "evacuation_time": 12.34,
+                        "total_agents": 5,
+                        "agents_evacuated": 5,
+                        "agents_remaining": 0,
+                    },
+                    sqlite_file="/nonexistent/path.sqlite",
+                ),
+            ),
+            Trial(
+                index=1,
+                axis_values={"v0": 1.5},
+                seed=8,
+                result=ScenarioResult(
+                    metrics={
+                        "seed": 8,
+                        "success": False,
+                        "evacuation_time": 0.0,
+                        "total_agents": 5,
+                        "agents_evacuated": 0,
+                        "agents_remaining": 5,
+                    },
+                    sqlite_file=None,
+                ),
+            ),
+        ],
+        axes={"v0": [1.2, 1.5]},
+        seeds=[7, 8],
+    )
+    out = tmp_path / "sweep.json"
+    original.save(out)
+
+    reloaded = SweepResult.load(out)
+    assert reloaded.axes == {"v0": [1.2, 1.5]}
+    assert reloaded.seeds == [7, 8]
+    assert len(reloaded.trials) == 2
+    assert reloaded.trials[0].axis_values == {"v0": 1.2}
+    assert reloaded.trials[0].seed == 7
+    assert reloaded.trials[0].result.success is True
+    assert reloaded.trials[0].result.evacuation_time == 12.34
+    assert reloaded.trials[0].result.sqlite_file == "/nonexistent/path.sqlite"
+    assert reloaded.trials[1].result.sqlite_file is None
+
+
 def test_sweep_cleanup_returns_removed_count(tmp_path):
     real_a = tmp_path / "a.sqlite"
     real_b = tmp_path / "b.sqlite"

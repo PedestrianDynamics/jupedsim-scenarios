@@ -66,3 +66,65 @@ def test_cli_run_writes_sqlite_and_prints_summary(tmp_path, capsys):
     assert summary["sqlite_file"] == str(target)
     assert summary["seed"] == 1
     assert summary["agents_evacuated"] > 0
+
+
+def test_cli_run_rejects_bad_run_kwargs(capsys):
+    pytest.importorskip("jupedsim")
+    # every_nth_frame=0 must surface as a friendly exit-2, not a traceback.
+    rc = main(["run", str(FIXTURE), "--every-nth-frame", "0"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "every_nth_frame" in err
+
+
+def test_cli_run_failed_simulation_cleans_explicit_out(tmp_path, capsys, monkeypatch):
+    """Addresses Copilot's PR #39 review: a failed simulation with
+    --out must not leave a partial / misleading file at the user-chosen
+    path."""
+    pytest.importorskip("jupedsim")
+
+    import jupedsim_scenarios.cli as cli_mod
+
+    target = tmp_path / "should_not_persist.sqlite"
+
+    # Stub a result that reports failure but still wrote a sqlite to
+    # the user-chosen path (which run_scenario does today since the
+    # writer is opened up front).
+    class _FakeResult:
+        success = False
+        sqlite_file = str(target)
+        metrics = {"message": "boom"}
+
+        def cleanup(self):
+            pathlib.Path(self.sqlite_file).unlink(missing_ok=True)
+
+    target.write_bytes(b"partial")  # simulate the run having written some bytes
+
+    def _fake_run_scenario(_scenario, **_kwargs):
+        return _FakeResult()
+
+    monkeypatch.setattr(cli_mod, "run_scenario", _fake_run_scenario)
+
+    rc = main(["run", str(FIXTURE), "--out", str(target)])
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "boom" in err
+    assert not target.exists()  # CLI cleaned up the failed-run sqlite
+
+
+def test_cli_run_surfaces_oserror_as_exit_2(tmp_path, capsys, monkeypatch):
+    """OSError from run_scenario (e.g. unwritable output path) must
+    not surface as a traceback — Copilot's PR #39 review."""
+    pytest.importorskip("jupedsim")
+
+    import jupedsim_scenarios.cli as cli_mod
+
+    def _fake_run_scenario(_scenario, **_kwargs):
+        raise PermissionError("simulated: unwritable path")
+
+    monkeypatch.setattr(cli_mod, "run_scenario", _fake_run_scenario)
+
+    rc = main(["run", str(FIXTURE), "--out", str(tmp_path / "out.sqlite")])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "unwritable path" in err

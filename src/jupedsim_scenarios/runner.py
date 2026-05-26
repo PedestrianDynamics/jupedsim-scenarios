@@ -857,11 +857,17 @@ class Scenario:
     # -- setters -------------------------------------------------------------
 
     def set_agent_count(self, distribution_id: int | str, count: int):
-        distribution_id = self._resolve_distribution_id(distribution_id)
-        _ensure_positive_int("count", count)
-        dist = self.distributions[distribution_id]
-        dist.setdefault("parameters", {})["number"] = count
-        dist["parameters"]["distribution_mode"] = "by_number"
+        """Set ``number`` on a distribution and force ``distribution_mode``
+        to ``"by_number"``. Thin convenience over
+        ``set_agent_params(id, number=count)`` for the common case;
+        the explicit form is preferred when you're already setting
+        other agent params at the same call site.
+        """
+        self.set_agent_params(distribution_id, number=count)
+        # Force distribution_mode regardless of what set_agent_params would
+        # have done — this setter's contract is "use by-number spawning".
+        did = self._resolve_distribution_id(distribution_id)
+        self.distributions[did]["parameters"]["distribution_mode"] = "by_number"
 
     # set_seed / set_max_time / set_model_type were removed in 0.5 —
     # write the fields directly. ``raw`` is mirrored lazily via

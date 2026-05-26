@@ -231,6 +231,71 @@ the API; low-impact items are local polish.
     keep ``summary()`` as the verbose multi-line version. Add
     `_repr_html_` for a small table in notebooks.
 
+## Round 3 — post-0.5 audit
+
+A fresh pass over the public surface after Round 2 landed. Same five
+rules. Items here target 0.6.
+
+### High impact
+
+- [x] **R3.1. `SweepResult.save()` advertises a non-existent `load()`** —
+  `sweep.py:129`. Fix: either implement `SweepResult.load(path)` (round-
+  trips the metadata; trajectory sqlites loaded if present, else
+  metadata-only) or rewrite the docstring. Implement is the right
+  call — saved sweeps are write-only otherwise.
+
+- [ ] **R3.2. No `save_scenario` / `Scenario.to_json()`** — `runner.py`.
+  R2.1's `add_*` methods let users build scenarios in Python. There's
+  no public path back to disk; only the private `_synced_raw()`.
+  Add `Scenario.to_json(path)` and `save_scenario(scenario, path)`
+  symmetric with `load_scenario`; round-trip via the three input
+  formats (JSON / ZIP / dir).
+
+- [x] **R3.3. `set_agent_count` duplicates `set_agent_params(id, number=...)`** —
+  `runner.py:859`. Delete or have it call `set_agent_params` internally
+  with a small distribution_mode override.
+
+### Medium impact
+
+- [ ] **R3.4. `remove_exit` only accepts string ids** — `runner.py:739`.
+  Other `remove_*` methods accept int-or-string via `_resolve_*_id`.
+  Add `_resolve_exit_id` and route `remove_exit` through it.
+
+- [x] **R3.5. CLI does tempfile-then-move; doesn't expose `--dt` /
+  `--every-nth-frame`** — `cli.py`. Was written before R2.4. Pass
+  `output_path=args.out` through to `run_scenario` and expose the
+  other R2.4 kwargs.
+
+- [ ] **R3.6. `Trial.success` proxies `result.success` but no other
+  fields** — `sweep.py:71`. Either proxy `evacuation_time`,
+  `agents_evacuated`, etc., or drop `Trial.success` entirely.
+
+- [ ] **R3.7. (Larger) Greenfield `Scenario()` constructor** —
+  `runner.py:319`. The constructor still requires `raw=`. With R3.2
+  shipping `to_json`, greenfield Python construction completes the
+  loop: build → run → save. Worth its own PR + decision pass.
+
+### Low impact
+
+- [ ] **R3.8. Stale package docstring** — `__init__.py:1-11`. Drop the
+  `scripts/run_scenario.py` reference; trim or update the
+  `jupedsim.internal.scenarios` migration note.
+
+- [ ] **R3.9. `SweepResult` doesn't support `__getitem__`** —
+  `sweep.py:76`. Add `__getitem__` so `sweep[0]` works.
+
+- [ ] **R3.10. `set_zone_speed_factor` / `set_checkpoint_waiting_time`
+  are validation-only wrappers**. Acceptable as-is, but consider
+  folding into a `Zone` / `Stage` view class with property setters
+  once R3.7 (greenfield) crystallises the element types.
+
+- [ ] **R3.11. `Scenario.copy(**overrides)` swallows typos beyond the
+  `hasattr` check**. `copy(model_typ="…")` doesn't raise. Tighten the
+  allow-list to known dataclass fields.
+
+- [ ] **R3.12. `_resolve_*_id` parameter shadows built-in `id`**.
+  Pre-existing; rename to `id_or_index` or `identifier` for clarity.
+
 ## Release checklist
 
 - [ ] All items above checked off (or explicitly deferred with a note).
