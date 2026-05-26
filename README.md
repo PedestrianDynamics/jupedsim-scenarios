@@ -53,6 +53,31 @@ result.cleanup()
 A higher-level `load_scenario(path)` is available for zipped exports
 (JSON + WKT file in the same archive or directory).
 
+### Mutating a scenario — copy first, then assign
+
+`Scenario` is a mutable object. Direct assignments and `add_*` /
+`remove_*` / `set_*` calls all change the instance **in place**:
+
+```python
+base = load_scenario(...)
+base.seed = 99            # this mutates `base` — every later use sees seed=99
+```
+
+That's fine when you only want one variant. For sweeps or any time
+you want to keep the original intact, call `.copy()` first and edit
+the clone:
+
+```python
+trial = base.copy()
+trial.seed = 99
+trial.max_simulation_time = 60
+# base is untouched
+```
+
+`run_sweep` does this for you per trial. The pattern only matters
+when you build variants manually (see
+`examples/howtos/10_sweep_via_copy.ipynb`).
+
 ## Monte Carlo sweep
 
 ```python
