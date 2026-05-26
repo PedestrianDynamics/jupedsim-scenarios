@@ -155,7 +155,7 @@ the API; low-impact items are local polish.
     (or deprecated); `scenario.seed = 42` updates both the field and
     the mirror; tests cover the property-setter path.
 
-- [ ] **R2.3. Kwarg typo guard on `set_model_params` / `set_agent_params`**
+- [x] **R2.3. Kwarg typo guard on `set_model_params` / `set_agent_params`**
   - Problem: ``set_agent_params(0, radius_dist="gaussian")`` (typo
     for ``radius_distribution``) currently writes the dead key and
     succeeds silently. Same for `set_model_params` with a typo'd
@@ -222,7 +222,7 @@ the API; low-impact items are local polish.
 
 ### Low impact
 
-- [ ] **R2.7. Useful `__repr__` (+ `_repr_html_` for notebooks)**
+- [x] **R2.7. Useful `__repr__` (+ `_repr_html_` for notebooks)**
   - Problem: ``repr(scenario)`` dumps the entire `raw` dict in a
     Jupyter cell. ``summary()`` is what users actually want — but
     Jupyter shows `__repr__`, not the result of a method call.

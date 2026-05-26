@@ -32,6 +32,7 @@ import sqlite3
 import tempfile
 import warnings
 import zlib
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
@@ -227,12 +228,67 @@ def _ensure_choice(name: str, value: Any, choices: set[str]) -> str:
     return value
 
 
+def _reject_unknown_kwargs(
+    name: str,
+    kwargs: dict[str, Any],
+    allowed: AbstractSet[str],
+) -> None:
+    """Raise ``TypeError`` for kwargs outside ``allowed``, suggesting matches.
+
+    A silently-ignored typo (``radius_dist`` instead of
+    ``radius_distribution``) used to write a dead key and run a
+    scenario with default parameters; this surface it as a build-time
+    error with a difflib suggestion.
+    """
+    import difflib
+
+    unknown = sorted(set(kwargs) - allowed)
+    if not unknown:
+        return
+    hints = []
+    for key in unknown:
+        suggestion = difflib.get_close_matches(key, allowed, n=1, cutoff=0.6)
+        hints.append(
+            f"{key!r} (did you mean {suggestion[0]!r}?)"
+            if suggestion
+            else repr(key)
+        )
+    raise TypeError(
+        f"{name}() received unknown keyword arguments: {', '.join(hints)}. "
+        f"Accepted: {sorted(allowed)}"
+    )
+
+
+# Public allow-lists for the kwarg guards on ``set_agent_params`` and
+# ``set_model_params``. The agent set is the documented surface plus
+# the three deprecated v0* aliases (which warn separately). The model
+# set is the union of parameters consumed by any model in
+# ``_MODEL_BUILDERS``; cross-model keys are allowed so callers can set
+# params before choosing the model.
+_AGENT_PARAM_KEYS = frozenset({
+    "radius", "radius_distribution", "radius_std",
+    "desired_speed", "desired_speed_std", "desired_speed_distribution",
+    "v0", "v0_std", "v0_distribution",
+    "use_flow_spawning", "flow_start_time", "flow_end_time",
+    "distribution_mode", "number",
+})
+_MODEL_PARAM_KEYS = frozenset({
+    "strength_neighbor_repulsion", "range_neighbor_repulsion",
+    "gcfm_strength_neighbor_repulsion", "gcfm_strength_geometry_repulsion",
+    "gcfm_max_neighbor_interaction_distance",
+    "gcfm_max_geometry_interaction_distance",
+    "gcfm_max_neighbor_repulsion_force", "gcfm_max_geometry_repulsion_force",
+    "sfm_body_force", "sfm_friction",
+    "anticipation_time",
+})
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(repr=False)
 class Scenario:
     """A loaded scenario ready for inspection and execution."""
 
@@ -317,11 +373,49 @@ class Scenario:
         params["model_type"] = self.model_type
         return self.raw
 
-    def summary(self) -> str:
-        total_agents = sum(
-            _distribution_agent_budget(d)
-            for d in self.distributions.values()
+    def _total_agents(self) -> int:
+        return sum(
+            _distribution_agent_budget(d) for d in self.distributions.values()
         )
+
+    def __repr__(self) -> str:
+        # One-line, autocomplete-friendly debug repr. The default
+        # dataclass repr dumps `raw` (often a multi-kilobyte JSON dict)
+        # which is unreadable in a notebook cell or a stack trace.
+        return (
+            f"Scenario(model={self.model_type!r}, seed={self.seed}, "
+            f"agents≈{self._total_agents()}, exits={len(self.exits)}, "
+            f"distributions={len(self.distributions)}, "
+            f"stages={len(self.stages)}, zones={len(self.zones)})"
+        )
+
+    def _repr_html_(self) -> str:
+        """Notebook-friendly summary table (Jupyter calls this automatically)."""
+        rows = [
+            ("Source", self.source_path or "(in-memory)"),
+            ("Model", self.model_type),
+            ("Seed", self.seed),
+            ("Max time", f"{self.max_simulation_time}s"),
+            ("Exits", len(self.exits)),
+            ("Distributions", len(self.distributions)),
+            ("Stages", len(self.stages)),
+            ("Zones", len(self.zones)),
+            ("Journeys", len(self.journeys)),
+            ("Agents", f"~{self._total_agents()}"),
+        ]
+        body = "".join(
+            f"<tr><th style='text-align:left;padding-right:1em'>{k}</th>"
+            f"<td>{v}</td></tr>"
+            for k, v in rows
+        )
+        return (
+            "<table style='border-collapse:collapse'>"
+            "<caption style='text-align:left;font-weight:bold'>Scenario</caption>"
+            f"{body}</table>"
+        )
+
+    def summary(self) -> str:
+        total_agents = self._total_agents()
         journey_sequence = []
         journeys = self.raw.get("journeys", [])
         if journeys:
@@ -612,6 +706,7 @@ class Scenario:
 
     def set_model_params(self, **kwargs):
         """Set model-specific parameters (e.g. strength_neighbor_repulsion, range_neighbor_repulsion)."""
+        _reject_unknown_kwargs("set_model_params", kwargs, _MODEL_PARAM_KEYS)
         for key, value in kwargs.items():
             if isinstance(value, (int, float)):
                 _ensure_non_negative_number(f"model parameter {key!r}", value)
@@ -631,6 +726,7 @@ class Scenario:
         ``DeprecationWarning``. They will be removed in a future release.
         """
         distribution_id = self._resolve_distribution_id(distribution_id)
+        _reject_unknown_kwargs("set_agent_params", kwargs, _AGENT_PARAM_KEYS)
         kwargs = self._migrate_speed_aliases(kwargs)
         speed_value = kwargs.get("desired_speed")
         speed_std_value = kwargs.get("desired_speed_std")
