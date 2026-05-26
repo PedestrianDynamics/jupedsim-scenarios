@@ -289,9 +289,13 @@ rules. Items here target 0.6.
   folding into a `Zone` / `Stage` view class with property setters
   once R3.7 (greenfield) crystallises the element types.
 
-- [x] **R3.11. `Scenario.copy(**overrides)` swallows typos beyond the
-  `hasattr` check**. `copy(model_typ="…")` doesn't raise. Tighten the
-  allow-list to known dataclass fields.
+- [x] **R3.11. `Scenario.copy(**overrides)` was fortifying an unused
+  feature**. Tightening the allow-list (initial plan) protected
+  override sugar that no in-tree caller exercised — sweep + tests +
+  notebooks all use `copy()` with no args and mutate the clone via
+  attribute assignment. Resolved by deleting `**overrides` entirely;
+  `copy()` is now a 2-line deep-copy. Same payoff as R3.6 — one
+  canonical mutation path, fewer ways to do one thing.
 
 - [x] **R3.12. `_resolve_*_id` parameter shadows built-in `id`**.
   Pre-existing; rename to `id_or_index` or `identifier` for clarity.

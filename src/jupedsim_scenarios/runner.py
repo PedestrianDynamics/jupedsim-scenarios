@@ -832,59 +832,24 @@ class Scenario:
 
     # -- copy ----------------------------------------------------------------
 
-    def copy(self, **overrides) -> Scenario:
-        """Return an independent deep copy of this scenario, with optional field overrides.
+    def copy(self) -> Scenario:
+        """Return an independent deep copy of this scenario.
 
-        Overrides REPLACE the field outright — they don't merge. Pass
-        ``sim_params={"max_simulation_time": 60}`` and you lose every
-        other key that was in ``sim_params`` before. To partially update
-        a dict field, do it explicitly::
+        The clone shares no mutable state with the original — mutating
+        the clone (adding distributions, changing the seed, etc.) does
+        not affect the source. Used internally by ``run_sweep`` to
+        isolate per-trial scenarios.
+
+        For a copy with one or two fields changed, copy first then
+        assign::
 
             clone = base.copy()
-            clone.sim_params["max_simulation_time"] = 60
-
-        or write the field directly (``clone.seed = 42``,
-        ``clone.max_simulation_time = 60``, ``clone.model_type = "…"``).
-
-        As a guardrail, replacing ``sim_params`` with a dict that drops
-        keys present in the original raises ``TypeError``. The full
-        replacement is still possible — pass every original key
-        explicitly to acknowledge the intent.
+            clone.seed = 99
+            clone.max_simulation_time = 60
         """
         import copy
-        from dataclasses import fields as dataclass_fields
 
-        clone = copy.deepcopy(self)
-        # Only init=True dataclass fields are overridable. Without this
-        # guard the loose ``hasattr`` check would let
-        # ``copy(plot=lambda: ...)`` shadow a method by creating an
-        # instance attribute, or ``copy(walkable_polygon=...)`` shadow
-        # the cached-property getter. Both are silent typo escapes.
-        # (Property setters like ``max_simulation_time`` would actually
-        # fire correctly via setattr — they're not the hazard.)
-        allowed = {f.name for f in dataclass_fields(self) if f.init}
-        for key, value in overrides.items():
-            if key not in allowed:
-                import difflib
-
-                suggestion = difflib.get_close_matches(key, allowed, n=1, cutoff=0.6)
-                hint = f" (did you mean {suggestion[0]!r}?)" if suggestion else ""
-                raise AttributeError(
-                    f"Scenario.copy() has no overridable field {key!r}{hint}. "
-                    f"Overridable fields: {sorted(allowed)}"
-                )
-            if key == "sim_params" and isinstance(value, dict):
-                missing = set(self.sim_params) - set(value)
-                if missing:
-                    raise TypeError(
-                        f"copy(sim_params=...) would drop existing keys "
-                        f"{sorted(missing)}. Replacements must include every "
-                        "original key (pass them explicitly to acknowledge), "
-                        "or mutate clone.sim_params after copy() / use a setter "
-                        "for a partial update."
-                    )
-            setattr(clone, key, value)
-        return clone
+        return copy.deepcopy(self)
 
     # -- setters -------------------------------------------------------------
 
