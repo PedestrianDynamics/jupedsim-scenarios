@@ -188,7 +188,7 @@ the API; low-impact items are local polish.
     `result.frame_rate`; passing `output_path` skips the tempdir
     dance.
 
-- [ ] **R2.5. Interactive / iterative runner**
+- [x] **R2.5. Interactive / iterative runner**
   - Problem: ``run_scenario`` is monolithic. Power users want to step
     until time T, inspect agent positions, mutate the scenario, step
     further. We refactored the loop into private helpers in item 4
