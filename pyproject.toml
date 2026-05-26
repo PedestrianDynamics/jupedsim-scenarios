@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jupedsim-scenarios"
-version = "0.3.7"
+version = "0.4.0"
 description = "Run, sweep, and analyze JuPedSim scenarios from the web-app JSON schema."
 readme = "README.md"
 license = { file = "LICENSE" }

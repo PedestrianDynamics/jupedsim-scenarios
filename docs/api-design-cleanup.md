@@ -108,6 +108,129 @@ Public surface under review: `Scenario`, `ScenarioResult`, `load_scenario`,
   - Already documented in the source. Not in this PR — track separately
     when memory pressure becomes real.
 
+## Round 2 — power-user / scientist focus
+
+The first round shipped in 0.4.0 (#26 + #27). This round is framed for
+the actual audience: jupedsim power users — mostly scientists — who may
+or may not touch the web UI. The guiding rules (designer's list):
+
+1. Simple and flexible.
+2. Consistent conventions and naming.
+3. No extra steps when a sensible default exists.
+4. Lean on the user's existing mental models.
+5. Discoverability through autocomplete, signatures, and inline docs.
+
+Items below are not in scope for 0.4.0 — they land in follow-up PRs and
+will accumulate into 0.5.0 (or split across releases if the design
+moves grow). High-impact items are the ones that change the shape of
+the API; low-impact items are local polish.
+
+### High impact
+
+- [ ] **R2.1. Python-native builder so the web JSON schema stops leaking**
+  - Problem: scientists who never used the web UI still have to learn
+    schema vocabulary (`raw["checkpoints"]`, `dist["parameters"]["number"]`,
+    `walkable_area_wkt`) to do anything beyond what the setters cover.
+    Cracking open ``Scenario.raw`` is currently required to add a
+    distribution, change an exit polygon, etc.
+  - Fix shape: a Python builder. ``Scenario(geometry=poly, model=…)`` +
+    ``add_distribution(Distribution(...))`` + ``add_exit(Exit(...))``.
+    The current ``Scenario`` becomes the load/persist layer; the
+    builder lowers to the same JSON shape under the hood so round-trips
+    with the web UI keep working.
+  - Acceptance: a notebook can build, run, and analyze a scenario
+    without `import json` and without touching `.raw`.
+
+- [ ] **R2.2. Replace scalar `set_*` wrappers with attribute setters**
+  - Problem: after we removed `__setattr__` magic, `scenario.seed = 42`
+    does NOT update `raw`, but `scenario.set_seed(42)` does. Two ways
+    to do one thing with different side effects — the exact
+    inconsistency rule 2 forbids. Same for `model_type`, `max_time`.
+  - Fix shape: convert the four scalar fields (`seed`, `model_type`,
+    `max_simulation_time`, `sim_params`) to descriptors / property
+    setters so plain assignment Just Works. Keep `set_agent_params`,
+    `set_flow_schedule`, etc. only where the op is not a single field
+    assignment. ``_synced_raw()`` remains the single mirror point.
+  - Acceptance: `set_seed` / `set_max_time` / `set_model_type` removed
+    (or deprecated); `scenario.seed = 42` updates both the field and
+    the mirror; tests cover the property-setter path.
+
+- [ ] **R2.3. Kwarg typo guard on `set_model_params` / `set_agent_params`**
+  - Problem: ``set_agent_params(0, radius_dist="gaussian")`` (typo
+    for ``radius_distribution``) currently writes the dead key and
+    succeeds silently. Same for `set_model_params` with a typo'd
+    repulsion parameter.
+  - Fix shape: validate kwargs against a known per-setter allow-list;
+    raise ``TypeError`` listing accepted keys on mismatch. Better
+    still — make the signatures explicit (positional/keyword args per
+    known field) so autocomplete shows them.
+  - Acceptance: a typo'd kwarg raises with a suggested correction
+    (difflib.get_close_matches); the canonical kwargs all appear in
+    autocomplete.
+
+- [ ] **R2.4. Configurable simulation params on `run_scenario`**
+  - Problem: ``every_nth_frame=10`` and the default ``dt`` are baked
+    into ``run_scenario``. We just made `result.frame_rate` honest, but
+    callers still can't *change* the underlying values. Scientists
+    running a high-frequency trajectory or a coarse sweep are stuck.
+  - Fix shape:
+    ```python
+    run_scenario(
+        scenario,
+        *,
+        seed=None,
+        dt=None,                # None → jupedsim default
+        every_nth_frame=10,
+        output_path=None,       # None → tempfile (current behavior)
+    )
+    ```
+  - Acceptance: changing `every_nth_frame` is visible in
+    `result.frame_rate`; passing `output_path` skips the tempdir
+    dance.
+
+- [ ] **R2.5. Interactive / iterative runner**
+  - Problem: ``run_scenario`` is monolithic. Power users want to step
+    until time T, inspect agent positions, mutate the scenario, step
+    further. We refactored the loop into private helpers in item 4
+    specifically to enable this — but they're still private.
+  - Fix shape: a `ScenarioRunner` class (or step-iterator API):
+    ```python
+    runner = ScenarioRunner(scenario, seed=42)
+    for state in runner.run_until(10.0):
+        ...
+    runner.set_zone_speed_factor("z0", 0.5)
+    runner.run_until(20.0)
+    ```
+    Backed by the per-tick helpers from item 4.
+  - Acceptance: a notebook can drive a simulation in chunks with
+    inspection between them; `run_scenario` becomes a thin wrapper
+    around `ScenarioRunner` that runs to completion.
+
+### Medium impact
+
+- [ ] **R2.6. Analysis surface on `ScenarioResult`**
+  - Problem: ``trajectory_dataframe()`` is the entire analysis API.
+    Scientists wanting pedpy-style densities / flows have to convert
+    manually and reach for pedpy themselves.
+  - Fix shape: at minimum ``result.as_pedpy_trajectory()`` (thin
+    adapter), optionally ``result.density(method=…, **kwargs)`` and
+    ``result.flow(...)`` as conveniences. Make the analysis layer
+    discoverable from the result object.
+  - Acceptance: pedpy is an optional dep (`extras_require=["pedpy"]`);
+    `result.as_pedpy_trajectory()` returns a `pedpy.TrajectoryData`
+    without the user touching column names.
+
+### Low impact
+
+- [ ] **R2.7. Useful `__repr__` (+ `_repr_html_` for notebooks)**
+  - Problem: ``repr(scenario)`` dumps the entire `raw` dict in a
+    Jupyter cell. ``summary()`` is what users actually want — but
+    Jupyter shows `__repr__`, not the result of a method call.
+  - Fix shape: `__repr__` returns a one-liner —
+    ``Scenario(model='CFSM', seed=42, agents≈25, exits=1)`` —
+    keep ``summary()`` as the verbose multi-line version. Add
+    `_repr_html_` for a small table in notebooks.
+
 ## Release checklist
 
 - [ ] All items above checked off (or explicitly deferred with a note).
