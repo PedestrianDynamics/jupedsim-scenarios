@@ -176,6 +176,38 @@ def test_sweep_result_load_reattaches_metadata(tmp_path):
     assert reloaded.trials[1].result.sqlite_file is None
 
 
+def test_sweep_result_supports_indexing_and_slicing():
+    # R3.9: SweepResult[i] / SweepResult[a:b] just delegate to the
+    # underlying trials list.
+    trials = [
+        Trial(
+            index=i,
+            axis_values={"v0": v},
+            seed=42,
+            result=ScenarioResult(metrics={"seed": 42, "success": True}, sqlite_file=None),
+        )
+        for i, v in enumerate([0.8, 1.2, 1.6])
+    ]
+    sweep = SweepResult(trials=trials, axes={"v0": [0.8, 1.2, 1.6]}, seeds=[42])
+    assert sweep[0] is trials[0]
+    assert sweep[-1] is trials[-1]
+    assert sweep[1:].count(trials[1]) == 1
+    assert len(sweep[1:]) == 2
+
+
+def test_trial_no_success_proxy_use_result():
+    # R3.6: Trial.success was removed; trial.result.success is the
+    # single canonical path.
+    t = Trial(
+        index=0,
+        axis_values={"v0": 1.2},
+        seed=42,
+        result=ScenarioResult(metrics={"success": True, "seed": 42}, sqlite_file=None),
+    )
+    assert not hasattr(t, "success")
+    assert t.result.success is True
+
+
 def test_sweep_cleanup_returns_removed_count(tmp_path):
     real_a = tmp_path / "a.sqlite"
     real_b = tmp_path / "b.sqlite"
@@ -241,7 +273,7 @@ def test_run_sweep_seed_only_replicates(corridor_scenario, tmp_path):
     assert seen_seeds == [1, 2, 3]
     sqlite_paths = [pathlib.Path(t.result.sqlite_file) for t in sweep.trials]
     for t, p in zip(sweep.trials, sqlite_paths, strict=True):
-        assert t.success, t.result.metrics.get("message")
+        assert t.result.success, t.result.metrics.get("message")
         assert p.exists()
 
     sweep.cleanup()

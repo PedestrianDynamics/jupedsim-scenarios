@@ -67,9 +67,11 @@ class Trial:
     result: ScenarioResult
     extras: Any = None
 
-    @property
-    def success(self) -> bool:
-        return self.result.success
+    # ``Trial.success`` used to proxy ``trial.result.success`` but no
+    # other result fields were proxied — inconsistent. Read result
+    # fields through ``trial.result`` (``trial.result.success``,
+    # ``trial.result.evacuation_time``, etc.) so there's exactly one
+    # canonical path.
 
 
 @dataclass
@@ -90,6 +92,15 @@ class SweepResult:
 
     def __iter__(self):
         return iter(self.trials)
+
+    def __getitem__(self, key):
+        """Index/slice into the trials list.
+
+        ``sweep[0]`` returns the first trial; ``sweep[0:3]`` returns a
+        list of the first three. Negative indices and slices behave
+        the same way they do on a plain list.
+        """
+        return self.trials[key]
 
     def to_dataframe(self):
         """Return a pandas DataFrame with one row per trial.

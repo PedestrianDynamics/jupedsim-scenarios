@@ -60,5 +60,21 @@ def test_copy_sim_params_full_replacement_allowed():
 
 def test_copy_unknown_attribute_raises():
     s = _scenario()
-    with pytest.raises(AttributeError, match="no attribute 'nope'"):
+    with pytest.raises(AttributeError, match="no overridable field 'nope'"):
         s.copy(nope=1)
+
+
+def test_copy_typo_in_dataclass_field_gets_difflib_hint():
+    # R3.11: copy() restricts overrides to dataclass init fields and
+    # suggests close matches via difflib.
+    s = _scenario()
+    with pytest.raises(AttributeError, match="did you mean 'model_type'"):
+        s.copy(model_typ="SocialForceModel")
+
+
+def test_copy_rejects_non_field_attribute():
+    # 'summary' is a method, not a dataclass field — must NOT be
+    # overridable through copy().
+    s = _scenario()
+    with pytest.raises(AttributeError, match="no overridable field 'summary'"):
+        s.copy(summary="ha")

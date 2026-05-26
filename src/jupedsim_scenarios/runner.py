@@ -612,56 +612,42 @@ class Scenario:
 
     # -- resolver helpers (private) -----------------------------------------
 
-    def _resolve_distribution_id(self, id: int | str) -> str:
-        """Accept an int index or string key for a distribution."""
-        if isinstance(id, int):
-            keys = list(self.distributions.keys())
-            if id < 0 or id >= len(keys):
-                raise IndexError(
-                    f"Distribution index {id} out of range. "
-                    f"Available indices: 0..{len(keys) - 1}"
-                )
-            return keys[id]
-        if id not in self.distributions:
-            raise KeyError(
-                f"Distribution '{id}' not found. "
-                f"Available: {list(self.distributions.keys())}"
-            )
-        return id
+    @staticmethod
+    def _resolve_key(
+        kind: str, bucket: MappingProxyType[str, Any] | dict[str, Any],
+        id_or_index: int | str,
+    ) -> str:
+        """Shared int-or-string resolver for the collection lookups.
 
-    def _resolve_zone_id(self, id: int | str) -> str:
-        """Accept an int index or string key for a zone."""
-        if isinstance(id, int):
-            keys = list(self.zones.keys())
-            if id < 0 or id >= len(keys):
+        ``kind`` is used only for error messages
+        (``"Distribution"`` / ``"Exit"`` / ``"Zone"`` / ``"Stage"``).
+        """
+        if isinstance(id_or_index, int):
+            keys = list(bucket.keys())
+            if id_or_index < 0 or id_or_index >= len(keys):
                 raise IndexError(
-                    f"Zone index {id} out of range. "
+                    f"{kind} index {id_or_index} out of range. "
                     f"Available indices: 0..{len(keys) - 1}"
                 )
-            return keys[id]
-        if id not in self.zones:
+            return keys[id_or_index]
+        if id_or_index not in bucket:
             raise KeyError(
-                f"Zone '{id}' not found. "
-                f"Available: {list(self.zones.keys())}"
+                f"{kind} {id_or_index!r} not found. "
+                f"Available: {list(bucket.keys())}"
             )
-        return id
+        return id_or_index
 
-    def _resolve_stage_id(self, id: int | str) -> str:
-        """Accept an int index or string key for a stage/checkpoint."""
-        if isinstance(id, int):
-            keys = list(self.stages.keys())
-            if id < 0 or id >= len(keys):
-                raise IndexError(
-                    f"Stage index {id} out of range. "
-                    f"Available indices: 0..{len(keys) - 1}"
-                )
-            return keys[id]
-        if id not in self.stages:
-            raise KeyError(
-                f"Stage '{id}' not found. "
-                f"Available: {list(self.stages.keys())}"
-            )
-        return id
+    def _resolve_distribution_id(self, id_or_index: int | str) -> str:
+        return self._resolve_key("Distribution", self.distributions, id_or_index)
+
+    def _resolve_exit_id(self, id_or_index: int | str) -> str:
+        return self._resolve_key("Exit", self.exits, id_or_index)
+
+    def _resolve_zone_id(self, id_or_index: int | str) -> str:
+        return self._resolve_key("Zone", self.zones, id_or_index)
+
+    def _resolve_stage_id(self, id_or_index: int | str) -> str:
+        return self._resolve_key("Stage", self.stages, id_or_index)
 
     # -- additive ops --------------------------------------------------------
     # Mirror the web-UI JSON schema under the hood so loaded scenarios can
@@ -673,16 +659,18 @@ class Scenario:
         self,
         coordinates,
         *,
-        id: str | None = None,
+        identifier: str | None = None,
         number: int = 10,
         **agent_params,
     ) -> str:
         """Add a spawn distribution. Returns its id.
 
         ``coordinates`` accepts a shapely ``Polygon`` or any iterable of
-        ``(x, y)`` pairs. The polygon is automatically closed. Extra
-        keyword arguments are validated through the same allow-list as
-        ``set_agent_params`` so typos surface immediately.
+        ``(x, y)`` pairs. The polygon is automatically closed.
+        ``identifier`` picks a specific id; ``None`` auto-generates one
+        as ``jps-distributions_{n}``. Extra keyword arguments are
+        validated through the same allow-list as ``set_agent_params``
+        so typos surface immediately.
         """
         coords = _normalize_polygon_coords(coordinates)
         _ensure_positive_int("number", number)
@@ -690,7 +678,7 @@ class Scenario:
         # add_distribution behaves consistently with set_agent_params.
         _reject_unknown_kwargs("add_distribution", agent_params, _AGENT_PARAM_KEYS)
         agent_params = self._migrate_speed_aliases(agent_params)
-        dist_id = self._allocate_id("distributions", id)
+        dist_id = self._allocate_id("distributions", identifier)
         params = {"number": number, "distribution_mode": "by_number"}
         params.update(agent_params)
         self.raw.setdefault("distributions", {})[dist_id] = {
@@ -705,13 +693,13 @@ class Scenario:
         self,
         coordinates,
         *,
-        id: str | None = None,
+        identifier: str | None = None,
         max_throughput: float = 0.0,
     ) -> str:
         """Add an exit polygon. Returns its id."""
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("max_throughput", max_throughput)
-        exit_id = self._allocate_id("exits", id)
+        exit_id = self._allocate_id("exits", identifier)
         self.raw.setdefault("exits", {})[exit_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -724,13 +712,13 @@ class Scenario:
         self,
         coordinates,
         *,
-        id: str | None = None,
+        identifier: str | None = None,
         speed_factor: float = 1.0,
     ) -> str:
         """Add a speed-modifier zone. Returns its id."""
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("speed_factor", speed_factor)
-        zone_id = self._allocate_id("zones", id)
+        zone_id = self._allocate_id("zones", identifier)
         self.raw.setdefault("zones", {})[zone_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -742,7 +730,7 @@ class Scenario:
         self,
         coordinates,
         *,
-        id: str | None = None,
+        identifier: str | None = None,
         waiting_time: float = 0.0,
     ) -> str:
         """Add a waypoint / checkpoint stage. Returns its id.
@@ -753,7 +741,7 @@ class Scenario:
         """
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("waiting_time", waiting_time)
-        stage_id = self._allocate_id("checkpoints", id)
+        stage_id = self._allocate_id("checkpoints", identifier)
         self.raw.setdefault("checkpoints", {})[stage_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -761,22 +749,21 @@ class Scenario:
         }
         return stage_id
 
-    def remove_distribution(self, id: int | str) -> None:
-        id = self._resolve_distribution_id(id)
-        self.raw["distributions"].pop(id)
+    def remove_distribution(self, identifier: int | str) -> None:
+        identifier = self._resolve_distribution_id(identifier)
+        self.raw["distributions"].pop(identifier)
 
-    def remove_exit(self, id: str) -> None:
-        if id not in self.exits:
-            raise KeyError(f"Exit {id!r} not found. Available: {list(self.exits)}")
-        self.raw["exits"].pop(id)
+    def remove_exit(self, identifier: int | str) -> None:
+        identifier = self._resolve_exit_id(identifier)
+        self.raw["exits"].pop(identifier)
 
-    def remove_zone(self, id: int | str) -> None:
-        id = self._resolve_zone_id(id)
-        self.raw["zones"].pop(id)
+    def remove_zone(self, identifier: int | str) -> None:
+        identifier = self._resolve_zone_id(identifier)
+        self.raw["zones"].pop(identifier)
 
-    def remove_stage(self, id: int | str) -> None:
-        id = self._resolve_stage_id(id)
-        self.raw["checkpoints"].pop(id)
+    def remove_stage(self, identifier: int | str) -> None:
+        identifier = self._resolve_stage_id(identifier)
+        self.raw["checkpoints"].pop(identifier)
 
     _RAW_KEY_BY_COLLECTION = {
         "distributions": "distributions",
@@ -865,11 +852,25 @@ class Scenario:
         explicitly to acknowledge the intent.
         """
         import copy
+        from dataclasses import fields as dataclass_fields
 
         clone = copy.deepcopy(self)
+        # Only init=True dataclass fields are overridable. Without this
+        # guard, ``copy(plot=lambda: ...)`` would replace a method via
+        # the loose ``hasattr`` check and ``copy(max_simulation_time=…)``
+        # would set the property's underlying private name instead of
+        # raising — both are subtle ways for a typo to escape.
+        allowed = {f.name for f in dataclass_fields(self) if f.init}
         for key, value in overrides.items():
-            if not hasattr(clone, key):
-                raise AttributeError(f"Scenario has no attribute '{key}'")
+            if key not in allowed:
+                import difflib
+
+                suggestion = difflib.get_close_matches(key, allowed, n=1, cutoff=0.6)
+                hint = f" (did you mean {suggestion[0]!r}?)" if suggestion else ""
+                raise AttributeError(
+                    f"Scenario.copy() has no overridable field {key!r}{hint}. "
+                    f"Overridable fields: {sorted(allowed)}"
+                )
             if key == "sim_params" and isinstance(value, dict):
                 missing = set(self.sim_params) - set(value)
                 if missing:
