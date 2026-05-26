@@ -111,10 +111,13 @@ class SweepResult:
             rows.append(row)
         return pd.DataFrame(rows)
 
-    def cleanup(self) -> None:
-        """Remove every trial's sqlite trajectory file."""
-        for t in self.trials:
-            t.result.cleanup()
+    def cleanup(self) -> int:
+        """Remove every trial's sqlite trajectory file.
+
+        Returns the number of files actually removed (trials whose
+        sqlite was already deleted or moved don't count).
+        """
+        return sum(t.result.cleanup() for t in self.trials)
 
     def save(self, path: str | pathlib.Path) -> None:
         """Persist sweep metadata (axes, seeds, per-trial paths + metrics) as JSON.

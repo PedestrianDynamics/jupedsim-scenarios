@@ -30,9 +30,10 @@ import pathlib
 import random
 import sqlite3
 import tempfile
+import warnings
 import zlib
 from dataclasses import dataclass, field
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
 import jupedsim as jps
@@ -168,6 +169,65 @@ def _distribution_agent_budget(dist: dict) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Validation helpers
+# ---------------------------------------------------------------------------
+# Shared by Scenario setters so each one stays a thin "validate + assign".
+# Bounds documented alongside the helper that enforces them — e.g. radius
+# is capped at 1.0 m because jupedsim's agent representation breaks down
+# beyond that, and desired_speed at 5.0 m/s because typical pedestrian
+# free-flow speeds top out around 1.5 m/s and 5 m/s is already well into
+# "scenario-author typo" territory.
+
+
+def _ensure_positive_int(name: str, value: Any) -> int:
+    if not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer, got {value!r}")
+    return value
+
+
+def _ensure_non_negative_int(name: str, value: Any) -> int:
+    if not isinstance(value, int) or value < 0:
+        raise ValueError(f"{name} must be a non-negative integer, got {value!r}")
+    return value
+
+
+def _ensure_positive_number(name: str, value: Any) -> float:
+    if not isinstance(value, (int, float)) or value <= 0:
+        raise ValueError(f"{name} must be a positive number, got {value!r}")
+    return float(value)
+
+
+def _ensure_non_negative_number(name: str, value: Any) -> float:
+    if not isinstance(value, (int, float)) or value < 0:
+        raise ValueError(f"{name} must be a non-negative number, got {value!r}")
+    return float(value)
+
+
+def _ensure_in_half_open_range(
+    name: str, value: Any, *, lo: float, hi: float, unit: str = ""
+) -> float:
+    """Validate ``lo < value <= hi``. Used for physical caps (radius, speed)."""
+    suffix = f" {unit}" if unit else ""
+    if (
+        not isinstance(value, (int, float))
+        or value <= lo
+        or value > hi
+    ):
+        raise ValueError(
+            f"{name} must be in ({lo}, {hi}]{suffix}, got {value!r}"
+        )
+    return float(value)
+
+
+def _ensure_choice(name: str, value: Any, choices: set[str]) -> str:
+    if value not in choices:
+        raise ValueError(
+            f"{name} must be one of {sorted(choices)}, got {value!r}"
+        )
+    return value
+
+
+# ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
 
@@ -184,56 +244,50 @@ class Scenario:
     source_path: str | None = None
 
     _walkable_polygon: Any = field(default=None, init=False, repr=False)
-
-    def __post_init__(self):
-        self._sync_runtime_to_raw()
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        # Keep cached / denormalized state in sync with the live fields
-        # so plain dataclass assignment never leaves the scenario in an
-        # inconsistent state (#18, #21).
-        #   - walkable_area_wkt → drops the cached shapely polygon
-        #     (re-parsed lazily on next access).
-        #   - seed / model_type / sim_params → re-mirrors into the
-        #     denormalized copy in raw["config"]["simulation_settings"]
-        #     that the JSON dump path consumes.
-        # Dict-level mutations (e.g. s.sim_params["x"] = 5) still bypass
-        # this hook — use set_model_params() for those.
-        super().__setattr__(name, value)
-        if name == "walkable_area_wkt":
-            super().__setattr__("_walkable_polygon", None)
-        elif name in ("seed", "model_type", "sim_params") and all(
-            k in self.__dict__ for k in ("raw", "seed", "model_type", "sim_params")
-        ):
-            self._sync_runtime_to_raw()
+    _walkable_polygon_key: str | None = field(default=None, init=False, repr=False)
 
     @property
     def walkable_polygon(self):
-        if self._walkable_polygon is None:
-            super().__setattr__(
-                "_walkable_polygon", wkt.loads(self.walkable_area_wkt)
-            )
+        # Re-parse whenever walkable_area_wkt has changed since the last
+        # access — keyed on the string itself rather than a __setattr__
+        # hook, so direct assignment, .copy() overrides, and setters all
+        # invalidate the cache automatically.
+        if self._walkable_polygon_key != self.walkable_area_wkt:
+            self._walkable_polygon = wkt.loads(self.walkable_area_wkt)
+            self._walkable_polygon_key = self.walkable_area_wkt
         return self._walkable_polygon
 
     @property
     def max_simulation_time(self) -> float:
         return self.sim_params.get("max_simulation_time", 300)
 
-    @property
-    def exits(self) -> dict[str, Any]:
-        return self.raw.get("exits", {})
+    # The four properties below expose read-only views over the
+    # corresponding sections of ``raw``. The view itself can't be
+    # mutated (``s.exits["new"] = {...}`` raises ``TypeError``), so
+    # callers can't accidentally bypass the setters' invariants.
+    # The nested dicts the view yields are still live and mutable —
+    # ``s.distributions[did]["parameters"]["number"] = 5`` still works
+    # and is how the setters themselves edit per-element fields.
 
     @property
-    def distributions(self) -> dict[str, Any]:
-        return self.raw.get("distributions", {})
+    def exits(self) -> MappingProxyType[str, Any]:
+        return MappingProxyType(self.raw.get("exits", {}))
 
     @property
-    def stages(self) -> dict[str, Any]:
-        return self.raw.get("checkpoints", {})
+    def distributions(self) -> MappingProxyType[str, Any]:
+        return MappingProxyType(self.raw.get("distributions", {}))
 
     @property
-    def zones(self) -> dict[str, Any]:
-        return self.raw.get("zones", {})
+    def stages(self) -> MappingProxyType[str, Any]:
+        # The JSON schema (web UI export) calls these "checkpoints";
+        # jupedsim's runtime calls them "stages". We surface the runtime
+        # vocabulary on the Python API and keep the JSON key as-is so
+        # existing exports load unchanged.
+        return MappingProxyType(self.raw.get("checkpoints", {}))
+
+    @property
+    def zones(self) -> MappingProxyType[str, Any]:
+        return MappingProxyType(self.raw.get("zones", {}))
 
     @property
     def journeys(self) -> list[dict[str, Any]]:
@@ -247,12 +301,21 @@ class Scenario:
         settings = self._simulation_settings()
         return settings.setdefault("simulationParams", {})
 
-    def _sync_runtime_to_raw(self) -> None:
+    def _synced_raw(self) -> dict[str, Any]:
+        """Return ``raw`` with seed / model_type / sim_params mirrored in.
+
+        Called immediately before serialization (see ``run_scenario``) so
+        the denormalized copy under ``raw["config"]["simulation_settings"]``
+        always reflects the current dataclass field values, regardless of
+        how they were updated (setters, attribute assignment, dict mutation).
+        Mutates ``raw`` in place and returns it for convenience.
+        """
         settings = self._simulation_settings()
         settings["baseSeed"] = self.seed
         params = self._simulation_params()
         params.update(self.sim_params)
         params["model_type"] = self.model_type
+        return self.raw
 
     def summary(self) -> str:
         total_agents = sum(
@@ -485,36 +548,58 @@ class Scenario:
     # -- copy ----------------------------------------------------------------
 
     def copy(self, **overrides) -> Scenario:
-        """Return an independent deep copy of this scenario, with optional field overrides."""
+        """Return an independent deep copy of this scenario, with optional field overrides.
+
+        Overrides REPLACE the field outright — they don't merge. Pass
+        ``sim_params={"max_simulation_time": 60}`` and you lose every
+        other key that was in ``sim_params`` before. To partially update
+        a dict field, do it explicitly::
+
+            clone = base.copy()
+            clone.sim_params["max_simulation_time"] = 60
+
+        or use the dedicated setters (``set_max_time``, ``set_seed``, …).
+
+        As a guardrail, replacing ``sim_params`` with a dict that drops
+        keys present in the original raises ``TypeError``. The full
+        replacement is still possible — pass every original key
+        explicitly to acknowledge the intent.
+        """
         import copy
 
         clone = copy.deepcopy(self)
         for key, value in overrides.items():
             if not hasattr(clone, key):
                 raise AttributeError(f"Scenario has no attribute '{key}'")
+            if key == "sim_params" and isinstance(value, dict):
+                missing = set(self.sim_params) - set(value)
+                if missing:
+                    raise TypeError(
+                        f"copy(sim_params=...) would drop existing keys "
+                        f"{sorted(missing)}. Replacements must include every "
+                        "original key (pass them explicitly to acknowledge), "
+                        "or mutate clone.sim_params after copy() / use a setter "
+                        "for a partial update."
+                    )
             setattr(clone, key, value)
-        clone._sync_runtime_to_raw()
         return clone
 
     # -- setters -------------------------------------------------------------
 
     def set_agent_count(self, distribution_id: int | str, count: int):
         distribution_id = self._resolve_distribution_id(distribution_id)
-        if not isinstance(count, int) or count <= 0:
-            raise ValueError(f"count must be a positive integer, got {count!r}")
+        _ensure_positive_int("count", count)
         dist = self.distributions[distribution_id]
         dist.setdefault("parameters", {})["number"] = count
         dist["parameters"]["distribution_mode"] = "by_number"
 
     def set_seed(self, seed: int):
-        if not isinstance(seed, int) or seed < 0:
-            raise ValueError(f"seed must be a non-negative integer, got {seed!r}")
+        _ensure_non_negative_int("seed", seed)
         self.seed = seed
         self._simulation_settings()["baseSeed"] = seed
 
     def set_max_time(self, seconds: float):
-        if not isinstance(seconds, (int, float)) or seconds <= 0:
-            raise ValueError(f"seconds must be a positive number, got {seconds!r}")
+        _ensure_positive_number("seconds", seconds)
         self.sim_params["max_simulation_time"] = seconds
         self._simulation_params()["max_simulation_time"] = seconds
 
@@ -528,57 +613,91 @@ class Scenario:
     def set_model_params(self, **kwargs):
         """Set model-specific parameters (e.g. strength_neighbor_repulsion, range_neighbor_repulsion)."""
         for key, value in kwargs.items():
-            if isinstance(value, (int, float)) and value < 0:
-                raise ValueError(f"Numeric parameter '{key}' must be non-negative, got {value}")
+            if isinstance(value, (int, float)):
+                _ensure_non_negative_number(f"model parameter {key!r}", value)
         self.sim_params.update(kwargs)
         self._simulation_params().update(kwargs)
 
     def set_agent_params(self, distribution_id: int | str, **kwargs):
         """Set agent parameters for a distribution.
 
-        Supported keys: radius, desired_speed (or v0), radius_distribution,
-        radius_std, desired_speed_distribution (or v0_distribution),
-        desired_speed_std (or v0_std), use_flow_spawning, flow_start_time,
-        flow_end_time, distribution_mode, number.
+        Supported keys: ``radius``, ``desired_speed``, ``radius_distribution``,
+        ``radius_std``, ``desired_speed_distribution``, ``desired_speed_std``,
+        ``use_flow_spawning``, ``flow_start_time``, ``flow_end_time``,
+        ``distribution_mode``, ``number``.
+
+        ``v0``, ``v0_std``, and ``v0_distribution`` are accepted as
+        deprecated aliases for the ``desired_speed*`` keys and emit a
+        ``DeprecationWarning``. They will be removed in a future release.
         """
         distribution_id = self._resolve_distribution_id(distribution_id)
-        speed_value = kwargs.get("desired_speed", kwargs.get("v0"))
-        speed_std_value = kwargs.get("desired_speed_std", kwargs.get("v0_std"))
-        speed_dist_value = kwargs.get(
-            "desired_speed_distribution",
-            kwargs.get("v0_distribution"),
-        )
+        kwargs = self._migrate_speed_aliases(kwargs)
+        speed_value = kwargs.get("desired_speed")
+        speed_std_value = kwargs.get("desired_speed_std")
+        speed_dist_value = kwargs.get("desired_speed_distribution")
         if "radius" in kwargs:
-            r = kwargs["radius"]
-            if not isinstance(r, (int, float)) or r <= 0 or r > 1.0:
-                raise ValueError(f"radius must be in (0, 1.0], got {r!r}")
+            _ensure_in_half_open_range(
+                "radius", kwargs["radius"], lo=0, hi=1.0, unit="m"
+            )
         if speed_value is not None:
-            if not isinstance(speed_value, (int, float)) or speed_value <= 0 or speed_value > 5.0:
-                raise ValueError(f"desired_speed/v0 must be in (0, 5.0], got {speed_value!r}")
+            _ensure_in_half_open_range(
+                "desired_speed", speed_value, lo=0, hi=5.0, unit="m/s"
+            )
         if speed_std_value is not None:
-            if not isinstance(speed_std_value, (int, float)) or speed_std_value < 0:
-                raise ValueError(f"desired_speed_std/v0_std must be non-negative, got {speed_std_value!r}")
+            _ensure_non_negative_number("desired_speed_std", speed_std_value)
         if speed_dist_value is not None:
-            if speed_dist_value not in {"constant", "gaussian"}:
-                raise ValueError(
-                    f"desired_speed_distribution/v0_distribution must be 'constant' or 'gaussian', got {speed_dist_value!r}"
-                )
+            _ensure_choice(
+                "desired_speed_distribution",
+                speed_dist_value,
+                {"constant", "gaussian"},
+            )
         if "number" in kwargs:
-            n = kwargs["number"]
-            if not isinstance(n, int) or n <= 0:
-                raise ValueError(f"number must be a positive integer, got {n!r}")
+            _ensure_positive_int("number", kwargs["number"])
         dist = self.distributions[distribution_id]
         params = dist.setdefault("parameters", {})
         params.update(kwargs)
+        # Mirror the canonical desired_speed* values into the legacy v0*
+        # keys for one release so the downstream consumers in
+        # simulation_init (and any third-party tooling that still reads
+        # raw JSON exports) keep working. The mirror itself goes away
+        # together with the deprecated kwargs.
         if speed_value is not None:
-            params["desired_speed"] = speed_value
             params["v0"] = speed_value
         if speed_std_value is not None:
-            params["desired_speed_std"] = speed_std_value
             params["v0_std"] = speed_std_value
         if speed_dist_value is not None:
-            params["desired_speed_distribution"] = speed_dist_value
             params["v0_distribution"] = speed_dist_value
+
+    @staticmethod
+    def _migrate_speed_aliases(kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Translate deprecated ``v0*`` kwargs onto their ``desired_speed*`` keys.
+
+        Returns a new dict so the caller's kwargs aren't mutated. Raises
+        ``TypeError`` if the user passes both spellings with different
+        values — silent precedence would lose data.
+        """
+        aliases = {
+            "v0": "desired_speed",
+            "v0_std": "desired_speed_std",
+            "v0_distribution": "desired_speed_distribution",
+        }
+        migrated = dict(kwargs)
+        for old, new in aliases.items():
+            if old not in migrated:
+                continue
+            warnings.warn(
+                f"{old!r} is deprecated; use {new!r} instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            value = migrated.pop(old)
+            if new in migrated and migrated[new] != value:
+                raise TypeError(
+                    f"Got conflicting values for {new!r} (={migrated[new]!r}) "
+                    f"and deprecated alias {old!r} (={value!r}); pass only {new!r}."
+                )
+            migrated.setdefault(new, value)
+        return migrated
 
     def set_flow_schedule(
         self,
@@ -613,15 +732,13 @@ class Scenario:
     def set_zone_speed_factor(self, zone_id: int | str, factor: float):
         """Set the speed factor for a zone."""
         zone_id = self._resolve_zone_id(zone_id)
-        if not isinstance(factor, (int, float)) or factor < 0:
-            raise ValueError(f"factor must be non-negative, got {factor!r}")
+        _ensure_non_negative_number("factor", factor)
         self.zones[zone_id]["speed_factor"] = factor
 
     def set_checkpoint_waiting_time(self, checkpoint_id: int | str, waiting_time: float):
         """Set the waiting time for a checkpoint/stage."""
         checkpoint_id = self._resolve_stage_id(checkpoint_id)
-        if not isinstance(waiting_time, (int, float)) or waiting_time < 0:
-            raise ValueError(f"waiting_time must be non-negative, got {waiting_time!r}")
+        _ensure_non_negative_number("waiting_time", waiting_time)
         self.stages[checkpoint_id]["waiting_time"] = waiting_time
 
 
@@ -654,18 +771,16 @@ class ScenarioResult:
 
     @property
     def frame_rate(self) -> float:
-        """Trajectory frame rate in frames per second.
-
-        Sourced from metrics (computed from the actual dt and writer stride
-        used at simulation time). Falls back to 10.0 only when metrics are
-        absent — that fallback is a safety value, not the true rate.
+        """Trajectory frame rate (Hz), computed from the writer stride and dt
+        at simulation time. KeyError if the metrics dict doesn't have it —
+        that's a runner bug, not something to paper over with a default.
         """
-        return self.metrics.get("frame_rate", 10.0)
+        return self.metrics["frame_rate"]
 
     @property
     def dt(self) -> float:
-        """Simulation timestep in seconds."""
-        return self.metrics.get("dt", 0.01)
+        """Simulation timestep in seconds, as reported by jupedsim."""
+        return self.metrics["dt"]
 
     @property
     def seed(self) -> int:
@@ -697,11 +812,17 @@ class ScenarioResult:
             con.close()
         return df
 
-    def cleanup(self):
-        """Delete the temporary SQLite trajectory file."""
+    def cleanup(self) -> int:
+        """Delete the temporary SQLite trajectory file.
+
+        Returns the number of files removed (0 or 1) so callers and
+        ``SweepResult.cleanup`` can report totals without re-checking.
+        """
         if self.sqlite_file and os.path.exists(self.sqlite_file):
             os.unlink(self.sqlite_file)
             self.sqlite_file = None
+            return 1
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -710,40 +831,29 @@ class ScenarioResult:
 
 
 def load_scenario(path: str) -> Scenario:
-    """Load a scenario ZIP or directory exported from the JuPedSim web UI."""
-    import zipfile
+    """Load a scenario from a ZIP archive, a directory, or a self-contained JSON file.
 
+    Three input shapes are supported:
+
+    * **Directory** — contains one ``*.json`` and one ``*.wkt`` file.
+    * **ZIP archive** — same two files packed together.
+    * **Self-contained JSON** — a single ``.json`` file whose top-level
+      object embeds the walkable geometry as ``"walkable_area_wkt"``.
+      This is what the CLI consumes.
+    """
     resolved = pathlib.Path(path).resolve()
 
     if resolved.is_dir():
-        json_files = sorted(resolved.glob("*.json"))
-        wkt_files = sorted(resolved.glob("*.wkt"))
-        if not json_files or not wkt_files:
-            raise ValueError(
-                f"Scenario directory must contain one JSON and one WKT file: {resolved}"
-            )
-        data = json.loads(json_files[0].read_text(encoding="utf-8"))
-        walkable_wkt = wkt_files[0].read_text(encoding="utf-8").strip()
-        source_path = str(resolved)
+        data, walkable_wkt = _load_scenario_from_dir(resolved)
+    elif resolved.suffix.lower() == ".json":
+        data, walkable_wkt = _load_scenario_from_self_contained_json(resolved)
     else:
-        source_path = str(resolved)
-        with zipfile.ZipFile(source_path) as zf:
-            names = zf.namelist()
-
-            json_name = next((n for n in names if n.endswith(".json")), None)
-            if json_name is None:
-                raise ValueError(f"ZIP contains no JSON file. Found: {names}")
-            data = json.loads(zf.read(json_name))
-
-            wkt_name = next((n for n in names if n.endswith(".wkt")), None)
-            if wkt_name is None:
-                raise ValueError(f"ZIP contains no WKT file. Found: {names}")
-            walkable_wkt = zf.read(wkt_name).decode("utf-8").strip()
+        data, walkable_wkt = _load_scenario_from_zip(resolved)
 
     sim_settings = data.get("config", {}).get("simulation_settings", {})
     sim_params = sim_settings.get("simulationParams", {})
-    model_type = sim_params.get("model_type", "CollisionFreeSpeedModel")
-    seed = sim_settings.get("baseSeed", 42)
+    model_type = sim_params.get("model_type", data.get("model_type", "CollisionFreeSpeedModel"))
+    seed = data.get("seed", sim_settings.get("baseSeed", 42))
 
     sim_params.setdefault("max_simulation_time", 300)
 
@@ -753,8 +863,512 @@ def load_scenario(path: str) -> Scenario:
         model_type=model_type,
         seed=seed,
         sim_params=sim_params,
-        source_path=source_path,
+        source_path=str(resolved),
     )
+
+
+def _load_scenario_from_dir(resolved: pathlib.Path) -> tuple[dict, str]:
+    json_files = sorted(resolved.glob("*.json"))
+    wkt_files = sorted(resolved.glob("*.wkt"))
+    if not json_files or not wkt_files:
+        raise ValueError(
+            f"Scenario directory must contain one JSON and one WKT file: {resolved}"
+        )
+    data = json.loads(json_files[0].read_text(encoding="utf-8"))
+    walkable_wkt = wkt_files[0].read_text(encoding="utf-8").strip()
+    return data, walkable_wkt
+
+
+def _load_scenario_from_zip(resolved: pathlib.Path) -> tuple[dict, str]:
+    import zipfile
+
+    with zipfile.ZipFile(resolved) as zf:
+        names = zf.namelist()
+        json_name = next((n for n in names if n.endswith(".json")), None)
+        if json_name is None:
+            raise ValueError(f"ZIP contains no JSON file. Found: {names}")
+        data = json.loads(zf.read(json_name))
+        wkt_name = next((n for n in names if n.endswith(".wkt")), None)
+        if wkt_name is None:
+            raise ValueError(f"ZIP contains no WKT file. Found: {names}")
+        walkable_wkt = zf.read(wkt_name).decode("utf-8").strip()
+    return data, walkable_wkt
+
+
+def _load_scenario_from_self_contained_json(resolved: pathlib.Path) -> tuple[dict, str]:
+    data = json.loads(resolved.read_text(encoding="utf-8"))
+    walkable_wkt = data.get("walkable_area_wkt")
+    if not walkable_wkt:
+        raise ValueError(
+            f"{resolved}: self-contained scenario JSON must embed "
+            "'walkable_area_wkt'. For two-file exports (separate .json + "
+            ".wkt), pass the parent directory or a ZIP instead."
+        )
+    return data, walkable_wkt.strip()
+
+
+# ---------------------------------------------------------------------------
+# Per-tick loop helpers
+# ---------------------------------------------------------------------------
+# Each helper owns one slice of what the main loop in ``run_scenario``
+# does on every tick. They mutate the dicts/lists passed in (agent
+# counters, wait-state, throughput trackers) in place and return
+# nothing — keep that contract when adding new ones, otherwise the
+# behavioral parity with the upstream loop is easy to break.
+
+
+def _select_journey_variant(distribution_journeys, rng):
+    """Weighted pick over a distribution's journey variants."""
+    total_weight = sum(
+        v["variant_data"]["percentage"] for v in distribution_journeys
+    )
+    rand_val = rng.random() * total_weight
+    cumulative = 0.0
+    for variant_info in distribution_journeys:
+        cumulative += variant_info["variant_data"]["percentage"]
+        if rand_val <= cumulative:
+            return variant_info
+    return distribution_journeys[0]
+
+
+def _resolve_variant_stage(selected_variant, spawning_info, direct_steering_info):
+    """Pick entry stage + (optionally) override with the global DS stage."""
+    selected_stage_id = None
+    for stage in selected_variant.get("entry_stages", []):
+        if (
+            stage in spawning_info["stage_map"]
+            and spawning_info["stage_map"][stage] != -1
+        ):
+            selected_stage_id = spawning_info["stage_map"][stage]
+            break
+    if selected_stage_id is None:
+        raise ValueError(
+            "No valid entry stage for variant "
+            f"{selected_variant.get('variant_name', selected_variant.get('id'))}"
+        )
+    journey_id = selected_variant["id"]
+    uses_direct_steering = any(
+        stage in direct_steering_info
+        for stage in selected_variant.get("actual_stages", [])
+    )
+    global_ds_journey_id = spawning_info.get("global_ds_journey_id")
+    global_ds_stage_id = spawning_info.get("global_ds_stage_id")
+    if (
+        uses_direct_steering
+        and global_ds_journey_id is not None
+        and global_ds_stage_id is not None
+    ):
+        return global_ds_journey_id, global_ds_stage_id
+    return journey_id, selected_stage_id
+
+
+def _exit_wait_info(
+    *, exit_id, exit_info, direct_steering_info, agent_id, seed
+) -> dict[str, Any]:
+    """Build the path-state record for an agent steered straight to an exit."""
+    base_seed = seed + agent_id * 9973
+    target = _random_point_in_polygon(
+        exit_info["polygon"], random.Random(base_seed)
+    )
+    stage_configs = {
+        sk: {
+            "polygon": info.get("polygon"),
+            "stage_type": info.get("stage_type", "exit"),
+            "waiting_time": float(info.get("waiting_time", 0.0)),
+            "waiting_time_distribution": info.get(
+                "waiting_time_distribution", "constant"
+            ),
+            "waiting_time_std": float(info.get("waiting_time_std", 1.0)),
+            "enable_throughput_throttling": bool(
+                info.get("enable_throughput_throttling", False)
+            ),
+            "max_throughput": float(info.get("max_throughput", 1.0)),
+            "speed_factor": float(info.get("speed_factor", 1.0)),
+        }
+        for sk, info in direct_steering_info.items()
+    }
+    return {
+        "mode": "path",
+        "path_choices": {},
+        "stage_configs": stage_configs,
+        "current_origin": exit_id,
+        "current_target_stage": exit_id,
+        "target": target,
+        "target_assigned": False,
+        "state": "to_target",
+        "wait_until": None,
+        "inside_since": None,
+        "reach_penetration": 0.25,
+        "reach_dwell_seconds": 0.2,
+        "step_index": 0,
+        "base_seed": base_seed,
+    }
+
+
+def _spawn_flow_agents(
+    *,
+    simulation,
+    current_time: float,
+    seed: int,
+    spawning_info: dict,
+    direct_steering_info: dict,
+    agent_wait_info: dict | None,
+    agent_radii: dict,
+    flow_variant_rng,
+    flow_param_rngs: dict,
+    pending_flow_samples: dict,
+) -> None:
+    """Spawn any flow-source agents whose scheduled time has arrived."""
+    spawning_freqs_and_numbers = spawning_info["spawning_freqs_and_numbers"]
+    flow_distributions = spawning_info["flow_distributions"]
+    num_agents_per_source = spawning_info["num_agents_per_source"]
+    agent_counter_per_source = spawning_info["agent_counter_per_source"]
+
+    for source_id in range(len(spawning_freqs_and_numbers)):
+        if source_id >= len(flow_distributions):
+            continue
+
+        flow_dist = flow_distributions[source_id]
+        spawn_frequency = spawning_freqs_and_numbers[source_id][0]
+        next_spawn_time = flow_dist["start_time"] + (
+            agent_counter_per_source[source_id] * spawn_frequency
+        )
+
+        if agent_counter_per_source[source_id] >= num_agents_per_source[source_id]:
+            continue
+        if current_time < flow_dist["start_time"] or current_time > flow_dist["end_time"]:
+            continue
+        if current_time < next_spawn_time:
+            continue
+
+        for _ in range(spawning_freqs_and_numbers[source_id][1]):
+            # Sample radius / v0 ONCE per logical agent and cache it
+            # across ticks: an agent that fails all candidate positions
+            # reuses the same draw on the next attempt rather than being
+            # redrawn (which biases the realized distribution against
+            # values that are harder to place).
+            base_flow_params = flow_dist["params"]
+            if source_id not in pending_flow_samples:
+                sampled_radii, sampled_v0s = _sample_agent_values(
+                    base_flow_params, 1, flow_param_rngs[source_id]
+                )
+                pending_flow_samples[source_id] = (
+                    float(sampled_radii[0]),
+                    float(sampled_v0s[0]),
+                )
+            pending_radius, pending_v0 = pending_flow_samples[source_id]
+            flow_params = {
+                **base_flow_params,
+                "radius": pending_radius,
+                "v0": pending_v0,
+            }
+
+            spawned = _try_spawn_one_flow_agent(
+                simulation=simulation,
+                seed=seed,
+                source_id=source_id,
+                flow_dist=flow_dist,
+                flow_params=flow_params,
+                spawning_info=spawning_info,
+                direct_steering_info=direct_steering_info,
+                agent_wait_info=agent_wait_info,
+                agent_radii=agent_radii,
+                flow_variant_rng=flow_variant_rng,
+            )
+            if not spawned:
+                break
+            agent_counter_per_source[source_id] += 1
+            pending_flow_samples.pop(source_id, None)
+
+
+def _try_spawn_one_flow_agent(
+    *,
+    simulation,
+    seed,
+    source_id,
+    flow_dist,
+    flow_params,
+    spawning_info,
+    direct_steering_info,
+    agent_wait_info,
+    agent_radii,
+    flow_variant_rng,
+) -> bool:
+    """Try every starting position for this source until one accepts.
+
+    Returns True on a successful spawn, False if every position failed
+    (in which case the outer loop stops trying this source for this
+    tick — matches the original control flow).
+    """
+    starting_positions = spawning_info["starting_pos_per_source"][source_id]
+    agent_counter_per_source = spawning_info["agent_counter_per_source"]
+    selected_variant = None
+    selected_variant_info = None
+
+    for j in range(len(starting_positions)):
+        pos_index = (agent_counter_per_source[source_id] + j) % len(starting_positions)
+        position = starting_positions[pos_index]
+
+        try:
+            agent_parameters = create_agent_parameters(
+                model_type=spawning_info["model_type"],
+                position=position,
+                params=flow_params,
+                global_params=spawning_info["global_parameters"],
+                journey_id=None,
+                stage_id=None,
+            )
+
+            if flow_dist.get("journey_info"):
+                selected_variant_info = _select_journey_variant(
+                    flow_dist["journey_info"], flow_variant_rng
+                )
+                selected_variant = selected_variant_info["variant_data"]
+                journey_id, stage_id = _resolve_variant_stage(
+                    selected_variant, spawning_info, direct_steering_info
+                )
+                agent_parameters.journey_id = journey_id
+                agent_parameters.stage_id = stage_id
+            else:
+                nearest_exit_stage_id = _find_nearest_exit(
+                    position,
+                    stage_map=spawning_info.get("stage_map"),
+                    exits=spawning_info.get("exits"),
+                    exit_geometries=spawning_info.get("exit_geometries"),
+                )
+                nearest_journey_id = spawning_info.get(
+                    "exit_to_journey", {}
+                ).get(nearest_exit_stage_id)
+                if nearest_journey_id is None:
+                    raise ValueError(
+                        f"Missing exit journey mapping for stage {nearest_exit_stage_id}"
+                    )
+                agent_parameters.journey_id = nearest_journey_id
+                agent_parameters.stage_id = nearest_exit_stage_id
+
+            agent_id = simulation.add_agent(agent_parameters)
+            agent_radii[agent_id] = flow_params.get("radius", 0.2)
+
+            if (
+                selected_variant
+                and agent_wait_info is not None
+                and direct_steering_info
+            ):
+                path_state = build_agent_path_state(
+                    variant_data=selected_variant,
+                    journey_key=(
+                        selected_variant_info.get("original_journey_id")
+                        if selected_variant_info
+                        else None
+                    ),
+                    transitions=spawning_info.get("transitions", []),
+                    direct_steering_info=direct_steering_info,
+                    waypoint_routing=spawning_info.get("waypoint_routing", {}),
+                    seed=seed,
+                    agent_id=agent_id,
+                    agent_radius=float(flow_params.get("radius", 0.2)),
+                )
+                if path_state:
+                    agent_wait_info[agent_id] = path_state
+            elif (
+                not selected_variant
+                and agent_wait_info is not None
+                and direct_steering_info
+            ):
+                stage_id_to_exit = {
+                    v: k for k, v in spawning_info.get("stage_map", {}).items()
+                }
+                exit_id = stage_id_to_exit.get(agent_parameters.stage_id)
+                if exit_id and exit_id in direct_steering_info:
+                    agent_wait_info[agent_id] = _exit_wait_info(
+                        exit_id=exit_id,
+                        exit_info=direct_steering_info[exit_id],
+                        direct_steering_info=direct_steering_info,
+                        agent_id=agent_id,
+                        seed=seed,
+                    )
+
+            return True
+        except Exception:
+            continue
+
+    return False
+
+
+def _apply_premovement(
+    *,
+    simulation,
+    current_time: float,
+    premovement_times: dict,
+    agent_speed_state: dict,
+) -> None:
+    """Release agents whose premovement timer has elapsed."""
+    for agent in simulation.agents():
+        agent_id = agent.id
+        entry = premovement_times.get(agent_id)
+        if entry is None or entry["activated"]:
+            continue
+        if current_time < entry["premovement_time"]:
+            continue
+        desired_speed = entry["desired_speed"]
+        set_agent_desired_speed(agent, desired_speed)
+        speed_state = ensure_agent_speed_state(
+            agent_speed_state, agent_id, agent
+        )
+        speed_state["original_speed"] = float(desired_speed)
+        speed_state["active_checkpoint"] = None
+        entry["activated"] = True
+
+
+def _advance_direct_steering(
+    *,
+    simulation,
+    agent_speed_state: dict,
+    direct_steering_info: dict,
+) -> None:
+    """Apply per-tick checkpoint-speed updates and prune dead agents."""
+    live_agent_ids: set[int] = set()
+    for agent in simulation.agents():
+        agent_id = int(agent.id)
+        live_agent_ids.add(agent_id)
+        x, y = extract_agent_xy(agent)
+        if x is None or y is None:
+            continue
+        update_checkpoint_speed(
+            agent_speed_state, direct_steering_info,
+            agent_id, agent, None, None, x, y,
+        )
+    for tracked_agent_id in list(agent_speed_state.keys()):
+        if tracked_agent_id not in live_agent_ids:
+            agent_speed_state.pop(tracked_agent_id, None)
+
+
+def _advance_path_following(
+    *,
+    simulation,
+    current_time: float,
+    agent_wait_info: dict,
+    agent_speed_state: dict,
+    direct_steering_info: dict,
+    checkpoint_throughput_tracker: dict,
+) -> None:
+    """Drive each path-mode agent through its to_target / waiting / done states."""
+    agents_by_id = {agent.id: agent for agent in simulation.agents()}
+    for agent_id, wait_info in list(agent_wait_info.items()):
+        if wait_info.get("mode") != "path":
+            continue
+        agent = agents_by_id.get(agent_id)
+        if agent is None:
+            continue
+        x, y = extract_agent_xy(agent)
+        if x is None or y is None:
+            continue
+        wait_info["current_position"] = (x, y)
+        _step_path_agent(
+            simulation=simulation,
+            current_time=current_time,
+            agent=agent,
+            agent_id=agent_id,
+            wait_info=wait_info,
+            x=x,
+            y=y,
+            agent_speed_state=agent_speed_state,
+            direct_steering_info=direct_steering_info,
+            checkpoint_throughput_tracker=checkpoint_throughput_tracker,
+        )
+
+
+def _step_path_agent(
+    *,
+    simulation,
+    current_time,
+    agent,
+    agent_id,
+    wait_info,
+    x,
+    y,
+    agent_speed_state,
+    direct_steering_info,
+    checkpoint_throughput_tracker,
+) -> None:
+    state = wait_info.get("state", "to_target")
+    current_target_stage = wait_info.get("current_target_stage")
+    stage_cfg = wait_info.get("stage_configs", {}).get(current_target_stage, {})
+    target = wait_info.get("target")
+
+    if state == "done":
+        update_checkpoint_speed(
+            agent_speed_state, direct_steering_info,
+            agent_id, agent, None, None, x, y,
+        )
+        return
+
+    if state == "to_target":
+        update_checkpoint_speed(
+            agent_speed_state, direct_steering_info,
+            agent_id, agent, current_target_stage, stage_cfg, x, y,
+        )
+        if not wait_info.get("target_assigned", False):
+            assign_agent_target(agent, target)
+            wait_info["target_assigned"] = True
+
+        reached_target = check_stage_reached(
+            wait_info, stage_cfg, x, y, current_time, target,
+        )
+        if not reached_target:
+            return
+
+        # Throttled checkpoints can defer the transition; if the gate
+        # rejects us, leave state machine unchanged and try again next tick.
+        if not _accept_throughput(
+            checkpoint_throughput_tracker, current_target_stage, stage_cfg, current_time
+        ):
+            return
+
+        if stage_cfg.get("stage_type") == "exit":
+            try:
+                simulation.mark_agent_for_removal(agent_id)
+            except Exception:
+                pass
+            wait_info["state"] = "done"
+            return
+
+        wait_time = sample_wait_time(
+            stage_cfg,
+            wait_info.get("base_seed", 0),
+            wait_info.get("step_index", 0),
+        )
+        if wait_time > 0:
+            wait_info["state"] = "waiting"
+            wait_info["wait_until"] = current_time + wait_time
+        else:
+            advance_path_target(wait_info)
+        return
+
+    if state == "waiting":
+        update_checkpoint_speed(
+            agent_speed_state, direct_steering_info,
+            agent_id, agent, current_target_stage, stage_cfg, x, y,
+        )
+        if current_time >= float(wait_info.get("wait_until", current_time)):
+            advance_path_target(wait_info)
+
+
+def _accept_throughput(
+    tracker: dict, wp_key, stage_cfg: dict, current_time: float
+) -> bool:
+    """Throughput gate for a checkpoint transition. Records the exit time on accept."""
+    if not stage_cfg.get("enable_throughput_throttling", False):
+        return True
+    max_throughput = float(stage_cfg.get("max_throughput", 1.0))
+    if not wp_key or max_throughput <= 0:
+        return True
+    min_interval = 1.0 / max_throughput
+    last = tracker.get(wp_key, {"last_exit_time": -9999}).get("last_exit_time", -9999)
+    if current_time - last < min_interval:
+        return False
+    tracker[wp_key] = {"last_exit_time": current_time}
+    return True
 
 
 def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResult:
@@ -767,9 +1381,10 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
     output_file = sqlite_tmp.name
     sqlite_tmp.close()
 
+    every_nth_frame = 10
     writer = jps.SqliteTrajectoryWriter(
         output_file=pathlib.Path(output_file),
-        every_nth_frame=10,
+        every_nth_frame=every_nth_frame,
     )
     simulation = jps.Simulation(
         model=model,
@@ -779,7 +1394,7 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
 
     config_tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
     try:
-        json.dump(scenario.raw, config_tmp, indent=2)
+        json.dump(scenario._synced_raw(), config_tmp, indent=2)
         config_tmp.close()
 
         walkable_area = SimpleNamespace(polygon=scenario.walkable_polygon)
@@ -795,8 +1410,6 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
 
         initial_agent_count = simulation.agent_count()
         has_flow_spawning = spawning_info.get("has_flow_spawning", False)
-        spawning_freqs_and_numbers = spawning_info.get("spawning_freqs_and_numbers", [])
-        starting_pos_per_source = spawning_info.get("starting_pos_per_source", [])
         num_agents_per_source = spawning_info.get("num_agents_per_source", [])
         agent_counter_per_source = spawning_info.get("agent_counter_per_source", [])
         flow_distributions = spawning_info.get("flow_distributions", [])
@@ -829,358 +1442,46 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
                 and sum(agent_counter_per_source) < sum(num_agents_per_source)
             )
         ):
+            current_time = simulation.elapsed_time()
+
             if has_flow_spawning:
-                current_time = simulation.elapsed_time()
-
-                for source_id in range(len(spawning_freqs_and_numbers)):
-                    if source_id >= len(flow_distributions):
-                        continue
-
-                    flow_dist = flow_distributions[source_id]
-                    spawn_frequency = spawning_freqs_and_numbers[source_id][0]
-                    next_spawn_time = flow_dist["start_time"] + (
-                        agent_counter_per_source[source_id] * spawn_frequency
-                    )
-
-                    if agent_counter_per_source[source_id] >= num_agents_per_source[source_id]:
-                        continue
-                    if current_time < flow_dist["start_time"] or current_time > flow_dist["end_time"]:
-                        continue
-                    if current_time < next_spawn_time:
-                        continue
-
-                    for _ in range(spawning_freqs_and_numbers[source_id][1]):
-                        # Sample radius / v0 ONCE per logical agent and
-                        # cache it across ticks: an agent that fails all
-                        # candidate positions reuses the same draw on the
-                        # next attempt rather than being redrawn (which
-                        # biases the realized distribution against values
-                        # that are harder to place).
-                        base_flow_params = flow_dist["params"]
-                        if source_id not in pending_flow_samples:
-                            _sampled_radii, _sampled_v0s = _sample_agent_values(
-                                base_flow_params, 1, flow_param_rngs[source_id]
-                            )
-                            pending_flow_samples[source_id] = (
-                                float(_sampled_radii[0]),
-                                float(_sampled_v0s[0]),
-                            )
-                        _pending_radius, _pending_v0 = pending_flow_samples[
-                            source_id
-                        ]
-                        flow_params = {
-                            **base_flow_params,
-                            "radius": _pending_radius,
-                            "v0": _pending_v0,
-                        }
-
-                        spawned_this_attempt = False
-                        selected_variant = None
-                        selected_variant_info = None
-
-                        for j in range(len(starting_pos_per_source[source_id])):
-                            pos_index = (
-                                agent_counter_per_source[source_id] + j
-                            ) % len(starting_pos_per_source[source_id])
-                            position = starting_pos_per_source[source_id][pos_index]
-
-                            try:
-                                agent_parameters = create_agent_parameters(
-                                    model_type=spawning_info["model_type"],
-                                    position=position,
-                                    params=flow_params,
-                                    global_params=spawning_info["global_parameters"],
-                                    journey_id=None,
-                                    stage_id=None,
-                                )
-
-                                if flow_dist.get("journey_info"):
-                                    distribution_journeys = flow_dist["journey_info"]
-                                    total_weight = sum(
-                                        variant_info["variant_data"]["percentage"]
-                                        for variant_info in distribution_journeys
-                                    )
-                                    rand_val = flow_variant_rng.random() * total_weight
-                                    cumulative_weight = 0.0
-                                    for variant_info in distribution_journeys:
-                                        cumulative_weight += variant_info["variant_data"]["percentage"]
-                                        if rand_val <= cumulative_weight:
-                                            selected_variant_info = variant_info
-                                            break
-                                    if selected_variant_info is None:
-                                        selected_variant_info = distribution_journeys[0]
-
-                                    selected_variant = selected_variant_info["variant_data"]
-                                    agent_parameters.journey_id = selected_variant["id"]
-
-                                    selected_stage_id = None
-                                    for stage in selected_variant.get("entry_stages", []):
-                                        if (
-                                            stage in spawning_info["stage_map"]
-                                            and spawning_info["stage_map"][stage] != -1
-                                        ):
-                                            selected_stage_id = spawning_info["stage_map"][stage]
-                                            break
-                                    if selected_stage_id is None:
-                                        raise ValueError(
-                                            f"No valid entry stage for variant {selected_variant.get('variant_name', selected_variant.get('id'))}"
-                                        )
-                                    agent_parameters.stage_id = selected_stage_id
-                                    uses_direct_steering = any(
-                                        stage in direct_steering_info
-                                        for stage in selected_variant.get("actual_stages", [])
-                                    )
-                                    global_ds_journey_id = spawning_info.get("global_ds_journey_id")
-                                    global_ds_stage_id = spawning_info.get("global_ds_stage_id")
-                                    if (
-                                        uses_direct_steering
-                                        and global_ds_journey_id is not None
-                                        and global_ds_stage_id is not None
-                                    ):
-                                        agent_parameters.journey_id = global_ds_journey_id
-                                        agent_parameters.stage_id = global_ds_stage_id
-                                else:
-                                    nearest_exit_stage_id = _find_nearest_exit(
-                                        position,
-                                        stage_map=spawning_info.get("stage_map"),
-                                        exits=spawning_info.get("exits"),
-                                        exit_geometries=spawning_info.get("exit_geometries"),
-                                    )
-                                    nearest_journey_id = spawning_info.get("exit_to_journey", {}).get(
-                                        nearest_exit_stage_id
-                                    )
-                                    if nearest_journey_id is None:
-                                        raise ValueError(
-                                            f"Missing exit journey mapping for stage {nearest_exit_stage_id}"
-                                        )
-                                    agent_parameters.journey_id = nearest_journey_id
-                                    agent_parameters.stage_id = nearest_exit_stage_id
-
-                                agent_id = simulation.add_agent(agent_parameters)
-                                agent_radii[agent_id] = flow_params.get("radius", 0.2)
-
-                                if selected_variant and agent_wait_info is not None and direct_steering_info:
-                                    path_state = build_agent_path_state(
-                                        variant_data=selected_variant,
-                                        journey_key=(
-                                            selected_variant_info.get("original_journey_id")
-                                            if selected_variant_info
-                                            else None
-                                        ),
-                                        transitions=spawning_info.get("transitions", []),
-                                        direct_steering_info=direct_steering_info,
-                                        waypoint_routing=spawning_info.get("waypoint_routing", {}),
-                                        seed=seed,
-                                        agent_id=agent_id,
-                                        agent_radius=float(flow_params.get("radius", 0.2)),
-                                    )
-                                    if path_state:
-                                        agent_wait_info[agent_id] = path_state
-                                elif (
-                                    not selected_variant
-                                    and agent_wait_info is not None
-                                    and direct_steering_info
-                                ):
-                                    stage_id_to_exit = {
-                                        v: k for k, v in spawning_info.get("stage_map", {}).items()
-                                    }
-                                    exit_id = stage_id_to_exit.get(agent_parameters.stage_id)
-                                    if exit_id and exit_id in direct_steering_info:
-                                        exit_info = direct_steering_info[exit_id]
-                                        base_seed = seed + agent_id * 9973
-                                        target_rng = random.Random(base_seed)
-                                        target = _random_point_in_polygon(
-                                            exit_info["polygon"],
-                                            target_rng,
-                                        )
-                                        stage_configs = {}
-                                        for sk, info in direct_steering_info.items():
-                                            stage_configs[sk] = {
-                                                "polygon": info.get("polygon"),
-                                                "stage_type": info.get("stage_type", "exit"),
-                                                "waiting_time": float(info.get("waiting_time", 0.0)),
-                                                "waiting_time_distribution": info.get(
-                                                    "waiting_time_distribution",
-                                                    "constant",
-                                                ),
-                                                "waiting_time_std": float(info.get("waiting_time_std", 1.0)),
-                                                "enable_throughput_throttling": bool(
-                                                    info.get("enable_throughput_throttling", False)
-                                                ),
-                                                "max_throughput": float(info.get("max_throughput", 1.0)),
-                                                "speed_factor": float(info.get("speed_factor", 1.0)),
-                                            }
-                                        agent_wait_info[agent_id] = {
-                                            "mode": "path",
-                                            "path_choices": {},
-                                            "stage_configs": stage_configs,
-                                            "current_origin": exit_id,
-                                            "current_target_stage": exit_id,
-                                            "target": target,
-                                            "target_assigned": False,
-                                            "state": "to_target",
-                                            "wait_until": None,
-                                            "inside_since": None,
-                                            "reach_penetration": 0.25,
-                                            "reach_dwell_seconds": 0.2,
-                                            "step_index": 0,
-                                            "base_seed": base_seed,
-                                        }
-
-                                spawned_this_attempt = True
-                                break
-                            except Exception:
-                                continue
-
-                        if not spawned_this_attempt:
-                            break
-                        agent_counter_per_source[source_id] += 1
-                        # Pending sample consumed by a successful spawn.
-                        pending_flow_samples.pop(source_id, None)
+                _spawn_flow_agents(
+                    simulation=simulation,
+                    current_time=current_time,
+                    seed=seed,
+                    spawning_info=spawning_info,
+                    direct_steering_info=direct_steering_info,
+                    agent_wait_info=agent_wait_info,
+                    agent_radii=agent_radii,
+                    flow_variant_rng=flow_variant_rng,
+                    flow_param_rngs=flow_param_rngs,
+                    pending_flow_samples=pending_flow_samples,
+                )
 
             if has_premovement:
-                current_time = simulation.elapsed_time()
-                for agent in simulation.agents():
-                    agent_id = agent.id
-                    if agent_id in premovement_times and not premovement_times[agent_id]["activated"]:
-                        if current_time >= premovement_times[agent_id]["premovement_time"]:
-                            desired_speed = premovement_times[agent_id]["desired_speed"]
-                            set_agent_desired_speed(agent, desired_speed)
-                            speed_state = ensure_agent_speed_state(
-                                agent_speed_state, agent_id, agent
-                            )
-                            speed_state["original_speed"] = float(desired_speed)
-                            speed_state["active_checkpoint"] = None
-                            premovement_times[agent_id]["activated"] = True
+                _apply_premovement(
+                    simulation=simulation,
+                    current_time=current_time,
+                    premovement_times=premovement_times,
+                    agent_speed_state=agent_speed_state,
+                )
 
             if direct_steering_info:
-                live_agent_ids = set()
-                for agent in simulation.agents():
-                    agent_id = int(agent.id)
-                    live_agent_ids.add(agent_id)
-                    x, y = extract_agent_xy(agent)
-                    if x is None or y is None:
-                        continue
-                    update_checkpoint_speed(
-                        agent_speed_state,
-                        direct_steering_info,
-                        agent_id,
-                        agent,
-                        None,
-                        None,
-                        x,
-                        y,
-                    )
-
-                for tracked_agent_id in list(agent_speed_state.keys()):
-                    if tracked_agent_id not in live_agent_ids:
-                        agent_speed_state.pop(tracked_agent_id, None)
+                _advance_direct_steering(
+                    simulation=simulation,
+                    agent_speed_state=agent_speed_state,
+                    direct_steering_info=direct_steering_info,
+                )
 
             if direct_steering_info and agent_wait_info:
-                current_time = simulation.elapsed_time()
-                agents_by_id = {agent.id: agent for agent in simulation.agents()}
-
-                for agent_id, wait_info in list(agent_wait_info.items()):
-                    if wait_info.get("mode") != "path":
-                        continue
-                    agent = agents_by_id.get(agent_id)
-                    if agent is None:
-                        continue
-
-                    state = wait_info.get("state", "to_target")
-                    x, y = extract_agent_xy(agent)
-                    if x is None or y is None:
-                        continue
-                    wait_info["current_position"] = (x, y)
-
-                    if state == "done":
-                        update_checkpoint_speed(
-                            agent_speed_state,
-                            direct_steering_info,
-                            agent_id,
-                            agent,
-                            None,
-                            None,
-                            x,
-                            y,
-                        )
-                        continue
-
-                    current_target_stage = wait_info.get("current_target_stage")
-                    stage_cfg = wait_info.get("stage_configs", {}).get(current_target_stage, {})
-                    target = wait_info.get("target")
-
-                    if state == "to_target":
-                        update_checkpoint_speed(
-                            agent_speed_state,
-                            direct_steering_info,
-                            agent_id,
-                            agent,
-                            current_target_stage,
-                            stage_cfg,
-                            x,
-                            y,
-                        )
-                        if not wait_info.get("target_assigned", False):
-                            assign_agent_target(agent, target)
-                            wait_info["target_assigned"] = True
-
-                        stage_type = stage_cfg.get("stage_type")
-                        reached_target = check_stage_reached(
-                            wait_info, stage_cfg, x, y,
-                            current_time, target,
-                        )
-
-                        if reached_target:
-                            enable_throttling = stage_cfg.get("enable_throughput_throttling", False)
-                            max_throughput = float(stage_cfg.get("max_throughput", 1.0))
-                            wp_key = current_target_stage
-                            if enable_throttling and wp_key and max_throughput > 0:
-                                min_interval = 1.0 / max_throughput
-                                tracker = checkpoint_throughput_tracker.get(
-                                    wp_key,
-                                    {"last_exit_time": -9999},
-                                )
-                                if current_time - tracker.get("last_exit_time", -9999) < min_interval:
-                                    continue
-                                checkpoint_throughput_tracker[wp_key] = {
-                                    "last_exit_time": current_time
-                                }
-
-                            if stage_type == "exit":
-                                try:
-                                    simulation.mark_agent_for_removal(agent_id)
-                                except Exception:
-                                    pass
-                                wait_info["state"] = "done"
-                                continue
-
-                            wait_time = sample_wait_time(
-                                stage_cfg,
-                                wait_info.get("base_seed", 0),
-                                wait_info.get("step_index", 0),
-                            )
-                            if wait_time > 0:
-                                wait_info["state"] = "waiting"
-                                wait_info["wait_until"] = current_time + wait_time
-                            else:
-                                advance_path_target(wait_info)
-                        continue
-
-                    if state == "waiting":
-                        update_checkpoint_speed(
-                            agent_speed_state,
-                            direct_steering_info,
-                            agent_id,
-                            agent,
-                            current_target_stage,
-                            stage_cfg,
-                            x,
-                            y,
-                        )
-                        if current_time >= float(wait_info.get("wait_until", current_time)):
-                            advance_path_target(wait_info)
-                        continue
+                _advance_path_following(
+                    simulation=simulation,
+                    current_time=current_time,
+                    agent_wait_info=agent_wait_info,
+                    agent_speed_state=agent_speed_state,
+                    direct_steering_info=direct_steering_info,
+                    checkpoint_throughput_tracker=checkpoint_throughput_tracker,
+                )
 
             simulation.iterate()
 
@@ -1202,6 +1503,12 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
             status = "incomplete"
             message = "Simulation stopped before all agents evacuated and before max_simulation_time."
 
+        # Trajectory frame rate = simulation step rate / writer stride.
+        # Pulled from the live simulation/writer so callers see the true
+        # rate even if the defaults ever change.
+        dt = float(simulation.delta_time())
+        frame_rate = 1.0 / (dt * every_nth_frame) if dt > 0 else 0.0
+
         metrics = {
             "success": all_evacuated,
             "status": status,
@@ -1211,8 +1518,8 @@ def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResu
             "agents_evacuated": total_agents - remaining,
             "agents_remaining": remaining,
             "all_evacuated": all_evacuated,
-            "frame_rate": 10.0,
-            "dt": 0.01,
+            "frame_rate": frame_rate,
+            "dt": dt,
             "seed": seed,
             "walkable_polygon": scenario.walkable_polygon,
         }

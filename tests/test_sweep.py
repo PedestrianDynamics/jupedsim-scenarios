@@ -119,6 +119,28 @@ def test_sweep_result_save_roundtrip(tmp_path):
     assert data["trials"][0]["axis_values"] == {"v0": 1.2}
 
 
+def test_sweep_cleanup_returns_removed_count(tmp_path):
+    real_a = tmp_path / "a.sqlite"
+    real_b = tmp_path / "b.sqlite"
+    real_a.write_bytes(b"")
+    real_b.write_bytes(b"")
+    trials = [
+        Trial(
+            index=i,
+            axis_values={"v0": 1.0},
+            seed=0,
+            result=ScenarioResult(metrics={}, sqlite_file=path),
+        )
+        for i, path in enumerate([str(real_a), str(real_b), None])
+    ]
+    sweep = SweepResult(trials=trials, axes={"v0": [1.0]}, seeds=[0])
+    # Two real files removed; the sqlite-less third trial contributes 0.
+    assert sweep.cleanup() == 2
+    assert not real_a.exists() and not real_b.exists()
+    # Idempotent: a second call finds nothing left to remove.
+    assert sweep.cleanup() == 0
+
+
 def test_workers_negative_raises(corridor_scenario):
     with pytest.raises(ValueError, match="workers must be >= 0"):
         run_sweep(corridor_scenario, workers=-1)
