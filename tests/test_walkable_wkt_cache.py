@@ -1,11 +1,12 @@
-"""Regression: changing walkable_area_wkt must invalidate the polygon cache.
+"""Regression: changing walkable_area_wkt must invalidate the polygon cache,
+and ``raw`` must be in sync with seed / model_type / sim_params at
+serialization time.
 
-Before #18 was fixed, plain field assignment
-(``scenario.walkable_area_wkt = new_wkt``) left the cached
-``_walkable_polygon`` stale; only ``.copy(walkable_area_wkt=...)``
-refreshed it. The simulator reads the cached polygon, so sweeps that
-mutated the field directly silently ran every trial on the original
-geometry.
+Cache invalidation is keyed on the wkt string itself (no ``__setattr__``
+hook), so direct assignment, ``.copy()`` overrides, and setters all
+trigger a fresh parse. The ``raw`` mirror is rebuilt lazily by
+``_synced_raw()`` immediately before serialization in ``run_scenario`` —
+plain attribute assignment no longer mutates ``raw`` until then.
 """
 
 from __future__ import annotations
@@ -30,8 +31,7 @@ def _scenario(wkt: str) -> Scenario:
 
 def test_constructor_parses_polygon_lazily():
     s = _scenario(SMALL_WKT)
-    # Cache is unset until the first .walkable_polygon access — that's
-    # what makes the invalidation in __setattr__ cheap.
+    # Cache is unset until the first .walkable_polygon access.
     assert s._walkable_polygon is None
     assert s.walkable_polygon.area == pytest.approx(1.0)
     assert s._walkable_polygon is not None
@@ -53,30 +53,42 @@ def test_copy_override_invalidates_cache():
     assert s.walkable_polygon.area == pytest.approx(1.0)
 
 
-# --- #21: raw stays in sync with seed / model_type / sim_params ---
+# --- #21: _synced_raw() mirrors seed / model_type / sim_params on demand ---
 
-def _settings(s: Scenario) -> dict:
-    return s.raw["config"]["simulation_settings"]
+def _settings(raw: dict) -> dict:
+    return raw["config"]["simulation_settings"]
 
 
-def test_seed_assignment_syncs_raw():
+def test_synced_raw_mirrors_seed():
     s = _scenario(SMALL_WKT)
-    assert _settings(s)["baseSeed"] == 42
     s.seed = 99
-    assert _settings(s)["baseSeed"] == 99
+    assert _settings(s._synced_raw())["baseSeed"] == 99
 
 
-def test_model_type_assignment_syncs_raw():
+def test_synced_raw_mirrors_model_type():
     s = _scenario(SMALL_WKT)
-    assert _settings(s)["simulationParams"]["model_type"] == "CollisionFreeSpeedModel"
     s.model_type = "SocialForceModel"
-    assert _settings(s)["simulationParams"]["model_type"] == "SocialForceModel"
+    assert _settings(s._synced_raw())["simulationParams"]["model_type"] == "SocialForceModel"
 
 
-def test_sim_params_assignment_syncs_raw():
+def test_synced_raw_mirrors_sim_params_and_keeps_model_type():
     s = _scenario(SMALL_WKT)
     s.sim_params = {"max_simulation_time": 123}
-    assert _settings(s)["simulationParams"]["max_simulation_time"] == 123
-    # _sync_runtime_to_raw treats self.model_type as the source of
-    # truth and overwrites any "model_type" inside sim_params.
-    assert _settings(s)["simulationParams"]["model_type"] == "CollisionFreeSpeedModel"
+    settings = _settings(s._synced_raw())
+    assert settings["simulationParams"]["max_simulation_time"] == 123
+    # self.model_type is the source of truth and overrides any
+    # "model_type" inside sim_params.
+    assert settings["simulationParams"]["model_type"] == "CollisionFreeSpeedModel"
+
+
+def test_setters_still_mirror_to_raw_eagerly():
+    # Setters write to both self.sim_params and raw, so callers that
+    # consume raw directly (without going through _synced_raw()) see
+    # setter-driven changes immediately.
+    s = _scenario(SMALL_WKT)
+    s.set_seed(7)
+    s.set_model_type("SocialForceModel")
+    s.set_max_time(45)
+    assert _settings(s.raw)["baseSeed"] == 7
+    assert _settings(s.raw)["simulationParams"]["model_type"] == "SocialForceModel"
+    assert _settings(s.raw)["simulationParams"]["max_simulation_time"] == 45

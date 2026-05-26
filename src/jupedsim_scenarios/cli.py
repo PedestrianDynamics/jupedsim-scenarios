@@ -1,9 +1,13 @@
 """Command-line entry point for jupedsim-scenarios.
 
     jps-scenarios run scenario.json --seed 42 --out trajectory.sqlite
+    jps-scenarios run scenario.zip --out trajectory.sqlite
+    jps-scenarios run scenario_dir/ --out trajectory.sqlite
 
+Accepts the same inputs as ``load_scenario`` — single self-contained
+JSON, ZIP archive, or a directory holding ``*.json`` + ``*.wkt``.
 Designed for CI smoke tests and scripted pipelines. Notebook use should
-go through the Python API (`run_scenario` / `run_sweep`).
+go through the Python API (``run_scenario`` / ``run_sweep``).
 """
 
 from __future__ import annotations
@@ -21,46 +25,20 @@ try:
 except Exception:  # pragma: no cover - importlib.metadata failure is benign for --version
     _VERSION = "0.0.0"
 
-from .runner import Scenario, run_scenario
-
-
-def _build_scenario_from_json(path: pathlib.Path) -> Scenario:
-    """Construct a Scenario from a single self-contained JSON file.
-
-    Mirrors the constructor flow used in tests and the web app — the JSON
-    is expected to embed `walkable_area_wkt` and a `config` block. For
-    zipped exports (separate JSON + WKT) use `load_scenario` from Python
-    instead.
-    """
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if "walkable_area_wkt" not in data:
-        raise SystemExit(
-            f"{path}: missing 'walkable_area_wkt' — the CLI only accepts "
-            "self-contained JSON. Use the Python API's load_scenario() "
-            "for zipped exports."
-        )
-    sim_settings = data.get("config", {}).get("simulation_settings", {})
-    sim_params = dict(sim_settings.get("simulationParams", {}))
-    sim_params.setdefault("max_simulation_time", 300)
-    return Scenario(
-        raw=data,
-        walkable_area_wkt=data["walkable_area_wkt"],
-        model_type=sim_params.get(
-            "model_type", data.get("model_type", "CollisionFreeSpeedModel")
-        ),
-        seed=data.get("seed", sim_settings.get("baseSeed", 42)),
-        sim_params=sim_params,
-        source_path=str(path),
-    )
+from .runner import load_scenario, run_scenario
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
     scenario_path = pathlib.Path(args.scenario).resolve()
     if not scenario_path.exists():
-        print(f"error: scenario file not found: {scenario_path}", file=sys.stderr)
+        print(f"error: scenario path not found: {scenario_path}", file=sys.stderr)
         return 2
 
-    scenario = _build_scenario_from_json(scenario_path)
+    try:
+        scenario = load_scenario(str(scenario_path))
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     result = run_scenario(scenario, seed=args.seed)
     # `keep_sqlite` is only true once the trajectory has been moved to --out.
     # On the failure path the temp sqlite always gets cleaned, even if --out
@@ -111,7 +89,11 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Run a single scenario and emit a trajectory sqlite.")
-    run.add_argument("scenario", help="Path to scenario JSON.")
+    run.add_argument(
+        "scenario",
+        help="Scenario source: a self-contained JSON file, a ZIP archive, "
+        "or a directory holding one JSON + one WKT.",
+    )
     run.add_argument(
         "--seed",
         type=int,
