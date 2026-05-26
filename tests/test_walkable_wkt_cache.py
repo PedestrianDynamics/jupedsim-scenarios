@@ -81,14 +81,23 @@ def test_synced_raw_mirrors_sim_params_and_keeps_model_type():
     assert settings["simulationParams"]["model_type"] == "CollisionFreeSpeedModel"
 
 
-def test_setters_still_mirror_to_raw_eagerly():
-    # Setters write to both self.sim_params and raw, so callers that
-    # consume raw directly (without going through _synced_raw()) see
-    # setter-driven changes immediately.
+def test_attribute_assignment_then_synced_raw_mirrors():
+    # The scalar set_* wrappers were removed in 0.5; direct attribute
+    # assignment is the supported path. ``_synced_raw()`` is what
+    # propagates the field values into ``raw`` on demand.
     s = _scenario(SMALL_WKT)
-    s.set_seed(7)
-    s.set_model_type("SocialForceModel")
-    s.set_max_time(45)
-    assert _settings(s.raw)["baseSeed"] == 7
-    assert _settings(s.raw)["simulationParams"]["model_type"] == "SocialForceModel"
-    assert _settings(s.raw)["simulationParams"]["max_simulation_time"] == 45
+    s.seed = 7
+    s.model_type = "SocialForceModel"
+    s.max_simulation_time = 45
+    settings = _settings(s._synced_raw())
+    assert settings["baseSeed"] == 7
+    assert settings["simulationParams"]["model_type"] == "SocialForceModel"
+    assert settings["simulationParams"]["max_simulation_time"] == 45
+
+
+def test_max_simulation_time_setter_validates():
+    s = _scenario(SMALL_WKT)
+    with pytest.raises(ValueError, match="max_simulation_time"):
+        s.max_simulation_time = 0
+    with pytest.raises(ValueError, match="max_simulation_time"):
+        s.max_simulation_time = -1

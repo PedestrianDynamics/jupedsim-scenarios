@@ -186,12 +186,6 @@ def _ensure_positive_int(name: str, value: Any) -> int:
     return value
 
 
-def _ensure_non_negative_int(name: str, value: Any) -> int:
-    if not isinstance(value, int) or value < 0:
-        raise ValueError(f"{name} must be a non-negative integer, got {value!r}")
-    return value
-
-
 def _ensure_positive_number(name: str, value: Any) -> float:
     if not isinstance(value, (int, float)) or value <= 0:
         raise ValueError(f"{name} must be a positive number, got {value!r}")
@@ -316,6 +310,11 @@ class Scenario:
     @property
     def max_simulation_time(self) -> float:
         return self.sim_params.get("max_simulation_time", 300)
+
+    @max_simulation_time.setter
+    def max_simulation_time(self, seconds: float) -> None:
+        _ensure_positive_number("max_simulation_time", seconds)
+        self.sim_params["max_simulation_time"] = seconds
 
     # The four properties below expose read-only views over the
     # corresponding sections of ``raw``. The view itself can't be
@@ -652,7 +651,8 @@ class Scenario:
             clone = base.copy()
             clone.sim_params["max_simulation_time"] = 60
 
-        or use the dedicated setters (``set_max_time``, ``set_seed``, …).
+        or write the field directly (``clone.seed = 42``,
+        ``clone.max_simulation_time = 60``, ``clone.model_type = "…"``).
 
         As a guardrail, replacing ``sim_params`` with a dict that drops
         keys present in the original raises ``TypeError``. The full
@@ -687,22 +687,14 @@ class Scenario:
         dist.setdefault("parameters", {})["number"] = count
         dist["parameters"]["distribution_mode"] = "by_number"
 
-    def set_seed(self, seed: int):
-        _ensure_non_negative_int("seed", seed)
-        self.seed = seed
-        self._simulation_settings()["baseSeed"] = seed
-
-    def set_max_time(self, seconds: float):
-        _ensure_positive_number("seconds", seconds)
-        self.sim_params["max_simulation_time"] = seconds
-        self._simulation_params()["max_simulation_time"] = seconds
-
-    def set_model_type(self, model_type: str):
-        if model_type not in _MODEL_BUILDERS:
-            raise ValueError(f"Unknown model: {model_type}. Available: {list(_MODEL_BUILDERS)}")
-        self.model_type = model_type
-        self.sim_params["model_type"] = model_type
-        self._simulation_params()["model_type"] = model_type
+    # set_seed / set_max_time / set_model_type were removed in 0.5 —
+    # write the fields directly. ``raw`` is mirrored lazily via
+    # ``_synced_raw()`` at serialization time, so the previous eager
+    # mirror in those setters became dead weight.
+    #
+    #   scenario.seed = 42
+    #   scenario.max_simulation_time = 60        # validates positive
+    #   scenario.model_type = "CollisionFreeSpeedModel"
 
     def set_model_params(self, **kwargs):
         """Set model-specific parameters (e.g. strength_neighbor_repulsion, range_neighbor_repulsion)."""

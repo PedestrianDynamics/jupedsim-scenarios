@@ -163,7 +163,7 @@ sweep_n.cleanup()
 md("""
 ## Step 4 — Sweep models at N=50
 
-Same `run_sweep`, different axis. `set_model_type` is a one-liner;
+Same `run_sweep`, different axis. The model is a plain attribute;
 the rest of the scenario (geometry, distribution, exit) is untouched.
 
 Macro outcomes (evacuation time) often agree across models — the
@@ -183,7 +183,7 @@ base = load_scenario(str(ASSET))
 sweep_m = run_sweep(
     base,
     axes={"model": MODELS},
-    apply={"model": lambda s, m: s.set_model_type(m)},
+    apply={"model": lambda s, m: setattr(s, "model_type", m)},
     seeds=range(200, 200 + SEEDS_PER_COND),
     workers=WORKERS,
 )
@@ -276,11 +276,11 @@ def bottleneck_factory(params):
         f"-0.2 -0.2, 15.2 -0.2, 15.2 {y_lo}, 15 {y_lo}, "
         f"15 2.0000000000000002e-16, 0 0, 0 6, 15 6, 15 {y_hi}, 15.2 {y_hi}))"
     )
-    s.set_model_type(params["model"])
+    s.model_type = params["model"]
     # Narrow widths can clog hard (especially CFM at b = 0.8 m, which
     # still hits the cap — see plot). 900 s gives the better-behaved
     # models room to finish even at the narrow end.
-    s.set_max_time(900)
+    s.max_simulation_time = 900
     return s, None
 
 trials = [{"model": m, "width": w} for m in MODELS_2D for w in WIDTHS]
