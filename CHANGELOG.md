@@ -5,6 +5,109 @@ All notable changes to `jupedsim-scenarios` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-26
+
+A scientist/power-user pass framed against five design rules
+(simplicity, consistency, sensible defaults, mental models,
+discoverability). See `docs/api-design-cleanup.md` for the full
+per-item rationale.
+
+### Added
+
+- **`ScenarioRunner`** — interactive driver matching the imperative
+  shape of `jupedsim.Simulation`. Step / inspect / mutate / continue.
+  Context-manager friendly; `run_scenario` is now a thin wrapper.
+  ```python
+  with ScenarioRunner(scenario, seed=42) as runner:
+      runner.run_until(10.0)
+      print(runner.elapsed_time, runner.agent_count)
+      runner.run_until()           # to completion
+      result = runner.result()
+  ```
+- **Additive ops on loaded scenarios** — extend a scenario in pure
+  Python without touching `raw`:
+  ```python
+  did = scenario.add_distribution(poly, number=20, desired_speed=1.4)
+  eid = scenario.add_exit([(8, 0), (10, 0), (10, 10), (8, 10)])
+  zid = scenario.add_zone(zone_poly, speed_factor=0.5)
+  sid = scenario.add_stage(wait_poly, waiting_time=3.0)
+  scenario.remove_distribution(did)
+  ```
+  Coordinates accept shapely `Polygon` or any iterable of `(x, y)`;
+  polygons auto-close. IDs are auto-generated as
+  `jps-{collection}_{n}` so round-trips with web exports stay clean.
+- **`ScenarioResult.as_pedpy_trajectory()`** — adapter to
+  `pedpy.TrajectoryData`, so analysis no longer requires rebuilding
+  the dataframe + looking up the frame rate manually.
+- **Configurable simulation params** on `run_scenario`:
+  `dt`, `every_nth_frame`, `output_path` (the trajectory writer
+  stride, simulation step, and output location are no longer
+  hardcoded).
+- **Useful `__repr__` + `_repr_html_`** on `Scenario` — one-line
+  debug repr and a notebook-rendered table:
+  ```
+  Scenario(model='CollisionFreeSpeedModel', seed=42, agents≈25,
+           exits=2, distributions=2, stages=1, zones=3)
+  ```
+- **`Scenario.max_simulation_time`** is now settable
+  (`scenario.max_simulation_time = 60`), with positive-number
+  validation.
+
+### Breaking changes
+
+- `Scenario.set_seed`, `Scenario.set_max_time`, `Scenario.set_model_type`
+  are removed. Write the fields directly:
+  ```python
+  scenario.seed = 42
+  scenario.max_simulation_time = 60
+  scenario.model_type = "CollisionFreeSpeedModel"
+  ```
+- `set_agent_params` and `set_model_params` raise `TypeError` for
+  unknown kwargs, with a difflib suggestion:
+  ```
+  set_agent_params() received unknown keyword arguments:
+  'radius_dist' (did you mean 'radius_std'?). Accepted: [...]
+  ```
+- `run_until(target_time)` clamps `target_time` to
+  `scenario.max_simulation_time`; callers can no longer drive the
+  simulation past the configured horizon by accident.
+- `ScenarioRunner.step` / `.run_until` / `.result` raise
+  `RuntimeError` after `close()` instead of silently using a closed
+  writer.
+
+### Deprecation removals (none in 0.5)
+
+The `v0` / `v0_std` / `v0_distribution` kwargs deprecated in 0.4 are
+still accepted with `DeprecationWarning`. They'll be removed in 0.6.
+
+### Migration
+
+Replace:
+```python
+scenario.set_seed(42)
+scenario.set_max_time(60)
+scenario.set_model_type("SocialForceModel")
+```
+with direct attribute assignment:
+```python
+scenario.seed = 42
+scenario.max_simulation_time = 60
+scenario.model_type = "SocialForceModel"
+```
+
+For interactive simulations:
+```python
+# 0.4: one-shot only
+result = run_scenario(scenario, seed=42)
+
+# 0.5: also one-shot, plus the interactive option
+with ScenarioRunner(scenario, seed=42) as runner:
+    runner.run_until(10.0)
+    # inspect / mutate ...
+    runner.run_until()
+    result = runner.result()
+```
+
 ## [0.4.0] — 2026-05-26
 
 A focused API-ergonomics pass. See `docs/api-design-cleanup.md` for the
