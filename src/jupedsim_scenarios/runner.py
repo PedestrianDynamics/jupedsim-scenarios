@@ -35,7 +35,7 @@ import zlib
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from types import MappingProxyType, SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 import jupedsim as jps
 import numpy as np
@@ -609,7 +609,8 @@ class Scenario:
 
     @staticmethod
     def _resolve_key(
-        kind: str, bucket: MappingProxyType[str, Any] | dict[str, Any],
+        kind: Literal["Distribution", "Exit", "Zone", "Stage"],
+        bucket: MappingProxyType[str, Any] | dict[str, Any],
         id_or_index: int | str,
     ) -> str:
         """Shared int-or-string resolver for the collection lookups.
