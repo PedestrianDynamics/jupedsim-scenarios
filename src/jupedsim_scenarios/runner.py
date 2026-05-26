@@ -867,30 +867,52 @@ def load_scenario(path: str) -> Scenario:
     )
 
 
+def _exactly_one(candidates: list, *, kind: str, where: str) -> Any:
+    """Pick the sole candidate from ``candidates`` or raise on 0 / >1.
+
+    Refuses to silently choose between multiple matches — a scenario
+    folder or archive that holds more than one ``*.json`` / ``*.wkt``
+    is ambiguous, and picking the first sorted entry hides the user's
+    actual intent.
+    """
+    if not candidates:
+        raise ValueError(f"{where}: no {kind} found.")
+    if len(candidates) > 1:
+        raise ValueError(
+            f"{where}: expected exactly one {kind}, found {len(candidates)}: "
+            f"{[str(c) for c in candidates]}. Trim the extras or load the "
+            "intended file directly."
+        )
+    return candidates[0]
+
+
 def _load_scenario_from_dir(resolved: pathlib.Path) -> tuple[dict, str]:
     json_files = sorted(resolved.glob("*.json"))
     wkt_files = sorted(resolved.glob("*.wkt"))
-    if not json_files or not wkt_files:
-        raise ValueError(
-            f"Scenario directory must contain one JSON and one WKT file: {resolved}"
-        )
-    data = json.loads(json_files[0].read_text(encoding="utf-8"))
-    walkable_wkt = wkt_files[0].read_text(encoding="utf-8").strip()
+    json_path = _exactly_one(json_files, kind="*.json file", where=str(resolved))
+    wkt_path = _exactly_one(wkt_files, kind="*.wkt file", where=str(resolved))
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    walkable_wkt = wkt_path.read_text(encoding="utf-8").strip()
     return data, walkable_wkt
 
 
 def _load_scenario_from_zip(resolved: pathlib.Path) -> tuple[dict, str]:
     import zipfile
 
-    with zipfile.ZipFile(resolved) as zf:
+    try:
+        zf_ctx = zipfile.ZipFile(resolved)
+    except zipfile.BadZipFile as exc:
+        # Surface as ValueError so the CLI's existing handler converts
+        # it to a friendly exit-2 instead of a Python traceback.
+        raise ValueError(f"{resolved}: not a valid ZIP archive ({exc}).") from exc
+
+    with zf_ctx as zf:
         names = zf.namelist()
-        json_name = next((n for n in names if n.endswith(".json")), None)
-        if json_name is None:
-            raise ValueError(f"ZIP contains no JSON file. Found: {names}")
+        json_names = [n for n in names if n.endswith(".json")]
+        wkt_names = [n for n in names if n.endswith(".wkt")]
+        json_name = _exactly_one(json_names, kind="*.json entry", where=str(resolved))
+        wkt_name = _exactly_one(wkt_names, kind="*.wkt entry", where=str(resolved))
         data = json.loads(zf.read(json_name))
-        wkt_name = next((n for n in names if n.endswith(".wkt")), None)
-        if wkt_name is None:
-            raise ValueError(f"ZIP contains no WKT file. Found: {names}")
         walkable_wkt = zf.read(wkt_name).decode("utf-8").strip()
     return data, walkable_wkt
 

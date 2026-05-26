@@ -53,5 +53,34 @@ def test_load_directory_with_split_json_and_wkt(tmp_path):
 
 def test_load_directory_missing_wkt_raises(tmp_path):
     (tmp_path / "scenario.json").write_text("{}")
-    with pytest.raises(ValueError, match="JSON and one WKT"):
+    with pytest.raises(ValueError, match="no \\*\\.wkt file"):
         load_scenario(str(tmp_path))
+
+
+def test_load_directory_with_multiple_jsons_raises(tmp_path):
+    data = json.loads(FIXTURE.read_text())
+    wkt = data.pop("walkable_area_wkt")
+    (tmp_path / "a.json").write_text(json.dumps(data))
+    (tmp_path / "b.json").write_text(json.dumps(data))
+    (tmp_path / "geometry.wkt").write_text(wkt)
+    with pytest.raises(ValueError, match="expected exactly one"):
+        load_scenario(str(tmp_path))
+
+
+def test_load_zip_with_multiple_wkts_raises(tmp_path):
+    data = json.loads(FIXTURE.read_text())
+    wkt = data.pop("walkable_area_wkt")
+    archive = tmp_path / "scenario.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("scenario.json", json.dumps(data))
+        zf.writestr("a.wkt", wkt)
+        zf.writestr("b.wkt", wkt)
+    with pytest.raises(ValueError, match="expected exactly one"):
+        load_scenario(str(archive))
+
+
+def test_load_corrupt_zip_raises_valueerror(tmp_path):
+    bad = tmp_path / "broken.zip"
+    bad.write_bytes(b"this is not a zip file")
+    with pytest.raises(ValueError, match="not a valid ZIP archive"):
+        load_scenario(str(bad))
