@@ -405,6 +405,31 @@ class Scenario:
         params["model_type"] = self.model_type
         return self.raw
 
+    def to_json(self, path: str | pathlib.Path | None = None) -> str | None:
+        """Serialize the scenario as self-contained JSON.
+
+        With ``path=None`` (default) returns the JSON string. With a
+        path, writes to that path (creating parent directories) and
+        returns ``None``. The output embeds ``walkable_area_wkt`` at
+        the top level so :func:`load_scenario` can read it back via
+        the self-contained-JSON branch — completing the build → run →
+        persist loop introduced by R2.1's ``add_*`` methods.
+
+        Round-trip is value-preserving for everything the public API
+        touches (geometry, seed, model_type, sim_params, exits,
+        distributions, stages, zones, journeys). Anything you stored
+        in ``scenario.raw`` directly survives too.
+        """
+        data = dict(self._synced_raw())
+        data["walkable_area_wkt"] = self.walkable_area_wkt
+        text = json.dumps(data, indent=2, default=str)
+        if path is None:
+            return text
+        target = pathlib.Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        return None
+
     def _total_agents(self) -> int:
         return sum(
             _distribution_agent_budget(d) for d in self.distributions.values()
@@ -1159,6 +1184,16 @@ def load_scenario(path: str) -> Scenario:
         sim_params=sim_params,
         source_path=str(resolved),
     )
+
+
+def save_scenario(scenario: Scenario, path: str | pathlib.Path) -> None:
+    """Write ``scenario`` to ``path`` as self-contained JSON.
+
+    Thin wrapper over :meth:`Scenario.to_json` for symmetry with
+    :func:`load_scenario`. Use ``scenario.to_json()`` (no path) when
+    you want the JSON as a string.
+    """
+    scenario.to_json(path)
 
 
 def _exactly_one(candidates: list, *, kind: str, where: str) -> Any:

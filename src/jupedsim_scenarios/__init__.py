@@ -16,6 +16,7 @@ from .runner import (
     ScenarioRunner,
     load_scenario,
     run_scenario,
+    save_scenario,
 )
 from .sweep import SweepResult, Trial, run_sweep, run_sweep_from_factory
 
@@ -29,4 +30,5 @@ __all__ = [
     "run_scenario",
     "run_sweep",
     "run_sweep_from_factory",
+    "save_scenario",
 ]
