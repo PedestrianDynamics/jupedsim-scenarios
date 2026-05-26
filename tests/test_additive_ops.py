@@ -58,9 +58,9 @@ def test_add_distribution_auto_id_picks_next_free_index():
 
 def test_add_distribution_explicit_id_collision_raises():
     s = _scenario()
-    s.add_distribution([(0, 0), (1, 0), (1, 1)], identifier="my-source")
+    s.add_distribution([(0, 0), (1, 0), (1, 1)], key="my-source")
     with pytest.raises(ValueError, match="already exists"):
-        s.add_distribution([(2, 2), (3, 2), (3, 3)], identifier="my-source")
+        s.add_distribution([(2, 2), (3, 2), (3, 3)], key="my-source")
 
 
 def test_add_distribution_unknown_kwarg_raises():

@@ -74,6 +74,30 @@ per-item rationale.
 - `ScenarioRunner.step` / `.run_until` / `.result` raise
   `RuntimeError` after `close()` instead of silently using a closed
   writer.
+- **`add_*` / `remove_*` kwarg `id` renamed to `key`** (R3.12). The
+  `id` name shadowed the builtin and read inconsistently across the
+  add/remove pair. Callers passing `id=` by keyword must migrate:
+  ```python
+  # Before
+  scenario.add_distribution(poly, id="src-A", number=20)
+  scenario.remove_exit(id="exit-A")
+
+  # After
+  scenario.add_distribution(poly, key="src-A", number=20)
+  scenario.remove_exit(key="exit-A")
+  ```
+  Positional calls (`scenario.remove_exit("exit-A")`) are unaffected.
+- **`Trial.success` removed** (R3.6) — read `trial.result.success`
+  (and `trial.result.evacuation_time`, etc.) for a single canonical
+  path into result fields.
+- **`Scenario.copy(**overrides)` no longer accepts overrides** (R3.11).
+  `copy()` now only returns a deep clone; copy-then-assign for field
+  changes:
+  ```python
+  clone = base.copy()
+  clone.seed = 99
+  clone.max_simulation_time = 60
+  ```
 
 ### Deprecation removals (none in 0.5)
 

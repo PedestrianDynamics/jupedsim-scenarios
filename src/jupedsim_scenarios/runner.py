@@ -405,14 +405,15 @@ class Scenario:
         params["model_type"] = self.model_type
         return self.raw
 
-    def to_json(self, path: str | pathlib.Path | None = None) -> str | None:
+    def to_json(self) -> str:
         """Serialize the scenario as self-contained JSON.
 
-        With ``path=None`` (default) returns the JSON string. With a
-        path, writes to that path (creating parent directories) and
-        returns ``None``. The output embeds ``walkable_area_wkt`` at
-        the top level so :func:`load_scenario` can read it back via
-        the self-contained-JSON branch — completing the build → run →
+        Returns the JSON string. To write to disk, use
+        :func:`save_scenario` (mirrors :func:`load_scenario`).
+
+        The output embeds ``walkable_area_wkt`` at the top level so
+        :func:`load_scenario` can read it back via the
+        self-contained-JSON branch — completing the build → run →
         persist loop introduced by R2.1's ``add_*`` methods.
 
         Round-trip is value-preserving for everything the public API
@@ -426,13 +427,7 @@ class Scenario:
         """
         data = dict(self._synced_raw())
         data["walkable_area_wkt"] = self.walkable_area_wkt
-        text = json.dumps(data, indent=2)
-        if path is None:
-            return text
-        target = pathlib.Path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
-        return None
+        return json.dumps(data, indent=2)
 
     def _total_agents(self) -> int:
         return sum(
@@ -659,7 +654,7 @@ class Scenario:
         self,
         coordinates,
         *,
-        identifier: str | None = None,
+        key: str | None = None,
         number: int = 10,
         **agent_params,
     ) -> str:
@@ -667,7 +662,7 @@ class Scenario:
 
         ``coordinates`` accepts a shapely ``Polygon`` or any iterable of
         ``(x, y)`` pairs. The polygon is automatically closed.
-        ``identifier`` picks a specific id; ``None`` auto-generates one
+        ``key`` picks a specific id; ``None`` auto-generates one
         as ``jps-distributions_{n}``. Extra keyword arguments are
         validated through the same allow-list as ``set_agent_params``
         so typos surface immediately.
@@ -678,7 +673,7 @@ class Scenario:
         # add_distribution behaves consistently with set_agent_params.
         _reject_unknown_kwargs("add_distribution", agent_params, _AGENT_PARAM_KEYS)
         agent_params = self._migrate_speed_aliases(agent_params)
-        dist_id = self._allocate_id("distributions", identifier)
+        dist_id = self._allocate_id("distributions", key)
         params = {"number": number, "distribution_mode": "by_number"}
         params.update(agent_params)
         self.raw.setdefault("distributions", {})[dist_id] = {
@@ -693,13 +688,13 @@ class Scenario:
         self,
         coordinates,
         *,
-        identifier: str | None = None,
+        key: str | None = None,
         max_throughput: float = 0.0,
     ) -> str:
         """Add an exit polygon. Returns its id."""
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("max_throughput", max_throughput)
-        exit_id = self._allocate_id("exits", identifier)
+        exit_id = self._allocate_id("exits", key)
         self.raw.setdefault("exits", {})[exit_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -712,13 +707,13 @@ class Scenario:
         self,
         coordinates,
         *,
-        identifier: str | None = None,
+        key: str | None = None,
         speed_factor: float = 1.0,
     ) -> str:
         """Add a speed-modifier zone. Returns its id."""
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("speed_factor", speed_factor)
-        zone_id = self._allocate_id("zones", identifier)
+        zone_id = self._allocate_id("zones", key)
         self.raw.setdefault("zones", {})[zone_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -730,7 +725,7 @@ class Scenario:
         self,
         coordinates,
         *,
-        identifier: str | None = None,
+        key: str | None = None,
         waiting_time: float = 0.0,
     ) -> str:
         """Add a waypoint / checkpoint stage. Returns its id.
@@ -741,7 +736,7 @@ class Scenario:
         """
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("waiting_time", waiting_time)
-        stage_id = self._allocate_id("checkpoints", identifier)
+        stage_id = self._allocate_id("checkpoints", key)
         self.raw.setdefault("checkpoints", {})[stage_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -749,21 +744,21 @@ class Scenario:
         }
         return stage_id
 
-    def remove_distribution(self, identifier: int | str) -> None:
-        identifier = self._resolve_distribution_id(identifier)
-        self.raw["distributions"].pop(identifier)
+    def remove_distribution(self, key: int | str) -> None:
+        key = self._resolve_distribution_id(key)
+        self.raw["distributions"].pop(key)
 
-    def remove_exit(self, identifier: int | str) -> None:
-        identifier = self._resolve_exit_id(identifier)
-        self.raw["exits"].pop(identifier)
+    def remove_exit(self, key: int | str) -> None:
+        key = self._resolve_exit_id(key)
+        self.raw["exits"].pop(key)
 
-    def remove_zone(self, identifier: int | str) -> None:
-        identifier = self._resolve_zone_id(identifier)
-        self.raw["zones"].pop(identifier)
+    def remove_zone(self, key: int | str) -> None:
+        key = self._resolve_zone_id(key)
+        self.raw["zones"].pop(key)
 
-    def remove_stage(self, identifier: int | str) -> None:
-        identifier = self._resolve_stage_id(identifier)
-        self.raw["checkpoints"].pop(identifier)
+    def remove_stage(self, key: int | str) -> None:
+        key = self._resolve_stage_id(key)
+        self.raw["checkpoints"].pop(key)
 
     _RAW_KEY_BY_COLLECTION = {
         "distributions": "distributions",
@@ -854,11 +849,13 @@ class Scenario:
     # -- setters -------------------------------------------------------------
 
     def set_agent_count(self, distribution_id: int | str, count: int):
-        """Set ``number`` on a distribution and force ``distribution_mode``
-        to ``"by_number"``. Thin convenience over
-        ``set_agent_params(id, number=count)`` for the common case;
-        the explicit form is preferred when you're already setting
-        other agent params at the same call site.
+        """Switch a distribution to by-number spawning with ``count`` agents.
+
+        Sets ``number=count`` AND unconditionally forces
+        ``distribution_mode="by_number"`` — so a distribution previously
+        configured as ``by_density`` will be flipped. If you want to
+        update the count without changing the spawning mode, call
+        ``set_agent_params(id, number=count)`` directly.
         """
         self.set_agent_params(distribution_id, number=count)
         # Force distribution_mode regardless of what set_agent_params would
@@ -1161,11 +1158,13 @@ def load_scenario(path: str) -> Scenario:
 def save_scenario(scenario: Scenario, path: str | pathlib.Path) -> None:
     """Write ``scenario`` to ``path`` as self-contained JSON.
 
-    Thin wrapper over :meth:`Scenario.to_json` for symmetry with
-    :func:`load_scenario`. Use ``scenario.to_json()`` (no path) when
-    you want the JSON as a string.
+    Side-effecting counterpart to :meth:`Scenario.to_json` (which
+    returns the JSON as a string), mirroring :func:`load_scenario`.
+    Parent directories are created if missing.
     """
-    scenario.to_json(path)
+    target = pathlib.Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(scenario.to_json(), encoding="utf-8")
 
 
 def _exactly_one(candidates: list, *, kind: str, where: str) -> Any:
