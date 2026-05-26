@@ -168,7 +168,7 @@ the API; low-impact items are local polish.
     (difflib.get_close_matches); the canonical kwargs all appear in
     autocomplete.
 
-- [ ] **R2.4. Configurable simulation params on `run_scenario`**
+- [x] **R2.4. Configurable simulation params on `run_scenario`**
   - Problem: ``every_nth_frame=10`` and the default ``dt`` are baked
     into ``run_scenario``. We just made `result.frame_rate` honest, but
     callers still can't *change* the underlying values. Scientists

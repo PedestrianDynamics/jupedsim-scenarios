@@ -1489,26 +1489,61 @@ def _accept_throughput(
     return True
 
 
-def run_scenario(scenario: Scenario, *, seed: int | None = None) -> ScenarioResult:
-    """Run a scenario with the same shared setup/runtime semantics as the web app."""
+def run_scenario(
+    scenario: Scenario,
+    *,
+    seed: int | None = None,
+    dt: float | None = None,
+    every_nth_frame: int = 10,
+    output_path: str | pathlib.Path | None = None,
+) -> ScenarioResult:
+    """Run a scenario with the same shared setup/runtime semantics as the web app.
+
+    Parameters
+    ----------
+    scenario
+        The scenario to simulate.
+    seed
+        Override the scenario's seed. ``None`` keeps ``scenario.seed``.
+    dt
+        Iteration step in seconds. ``None`` uses jupedsim's default
+        (currently 0.01s). Smaller values cost more CPU; larger values
+        risk instability.
+    every_nth_frame
+        Trajectory writer stride. ``10`` keeps the historical default
+        (10 fps at dt=0.01). Set to ``1`` to capture every iteration.
+    output_path
+        Where to write the trajectory SQLite file. ``None`` puts it in
+        a tempfile that ``ScenarioResult.cleanup()`` removes. Pass a
+        path to keep the file at a known location.
+    """
     seed = seed if seed is not None else scenario.seed
+    _ensure_positive_int("every_nth_frame", every_nth_frame)
+    if dt is not None:
+        _ensure_positive_number("dt", dt)
 
     model = _build_model(scenario.model_type, scenario.sim_params)
 
-    sqlite_tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
-    output_file = sqlite_tmp.name
-    sqlite_tmp.close()
+    if output_path is None:
+        sqlite_tmp = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
+        output_file = sqlite_tmp.name
+        sqlite_tmp.close()
+    else:
+        output_file = str(pathlib.Path(output_path).resolve())
+        pathlib.Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
-    every_nth_frame = 10
     writer = jps.SqliteTrajectoryWriter(
         output_file=pathlib.Path(output_file),
         every_nth_frame=every_nth_frame,
     )
-    simulation = jps.Simulation(
+    sim_kwargs: dict[str, Any] = dict(
         model=model,
         geometry=scenario.walkable_polygon,
         trajectory_writer=writer,
     )
+    if dt is not None:
+        sim_kwargs["dt"] = dt
+    simulation = jps.Simulation(**sim_kwargs)
 
     config_tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
     try:
