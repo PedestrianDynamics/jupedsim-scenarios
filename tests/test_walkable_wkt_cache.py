@@ -44,12 +44,13 @@ def test_field_assignment_invalidates_cache():
     assert s.walkable_polygon.area == pytest.approx(25.0)
 
 
-def test_copy_override_invalidates_cache():
+def test_copy_then_mutate_invalidates_cache():
     s = _scenario(SMALL_WKT)
     _ = s.walkable_polygon
-    clone = s.copy(walkable_area_wkt=LARGE_WKT)
+    clone = s.copy()
+    clone.walkable_area_wkt = LARGE_WKT
     assert clone.walkable_polygon.area == pytest.approx(25.0)
-    # Original is unchanged.
+    # Original is unchanged — copy() returned an independent Scenario.
     assert s.walkable_polygon.area == pytest.approx(1.0)
 
 

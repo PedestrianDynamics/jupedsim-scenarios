@@ -257,7 +257,7 @@ rules. Items here target 0.6.
 
 ### Medium impact
 
-- [ ] **R3.4. `remove_exit` only accepts string ids** — `runner.py:739`.
+- [x] **R3.4. `remove_exit` only accepts string ids** — `runner.py` (`Scenario.remove_exit`).
   Other `remove_*` methods accept int-or-string via `_resolve_*_id`.
   Add `_resolve_exit_id` and route `remove_exit` through it.
 
@@ -266,7 +266,7 @@ rules. Items here target 0.6.
   `output_path=args.out` through to `run_scenario` and expose the
   other R2.4 kwargs.
 
-- [ ] **R3.6. `Trial.success` proxies `result.success` but no other
+- [x] **R3.6. `Trial.success` proxies `result.success` but no other
   fields** — `sweep.py:71`. Either proxy `evacuation_time`,
   `agents_evacuated`, etc., or drop `Trial.success` entirely.
 
@@ -277,11 +277,11 @@ rules. Items here target 0.6.
 
 ### Low impact
 
-- [ ] **R3.8. Stale package docstring** — `__init__.py:1-11`. Drop the
+- [x] **R3.8. Stale package docstring** — `__init__.py:1-11`. Drop the
   `scripts/run_scenario.py` reference; trim or update the
   `jupedsim.internal.scenarios` migration note.
 
-- [ ] **R3.9. `SweepResult` doesn't support `__getitem__`** —
+- [x] **R3.9. `SweepResult` doesn't support `__getitem__`** —
   `sweep.py:76`. Add `__getitem__` so `sweep[0]` works.
 
 - [ ] **R3.10. `set_zone_speed_factor` / `set_checkpoint_waiting_time`
@@ -289,11 +289,15 @@ rules. Items here target 0.6.
   folding into a `Zone` / `Stage` view class with property setters
   once R3.7 (greenfield) crystallises the element types.
 
-- [ ] **R3.11. `Scenario.copy(**overrides)` swallows typos beyond the
-  `hasattr` check**. `copy(model_typ="…")` doesn't raise. Tighten the
-  allow-list to known dataclass fields.
+- [x] **R3.11. `Scenario.copy(**overrides)` was fortifying an unused
+  feature**. Tightening the allow-list (initial plan) protected
+  override sugar that no in-tree caller exercised — sweep + tests +
+  notebooks all use `copy()` with no args and mutate the clone via
+  attribute assignment. Resolved by deleting `**overrides` entirely;
+  `copy()` is now a 2-line deep-copy. Same payoff as R3.6 — one
+  canonical mutation path, fewer ways to do one thing.
 
-- [ ] **R3.12. `_resolve_*_id` parameter shadows built-in `id`**.
+- [x] **R3.12. `_resolve_*_id` parameter shadows built-in `id`**.
   Pre-existing; rename to `id_or_index` or `identifier` for clarity.
 
 ## Release checklist

@@ -58,9 +58,9 @@ def test_add_distribution_auto_id_picks_next_free_index():
 
 def test_add_distribution_explicit_id_collision_raises():
     s = _scenario()
-    s.add_distribution([(0, 0), (1, 0), (1, 1)], id="my-source")
+    s.add_distribution([(0, 0), (1, 0), (1, 1)], key="my-source")
     with pytest.raises(ValueError, match="already exists"):
-        s.add_distribution([(2, 2), (3, 2), (3, 3)], id="my-source")
+        s.add_distribution([(2, 2), (3, 2), (3, 3)], key="my-source")
 
 
 def test_add_distribution_unknown_kwarg_raises():
@@ -129,3 +129,17 @@ def test_remove_unknown_raises():
         s.remove_zone("nope")
     with pytest.raises(KeyError):
         s.remove_stage("nope")
+
+
+def test_remove_exit_accepts_int_index():
+    # R3.4: parity with the other remove_* methods.
+    s = _scenario()
+    s.add_exit([(8, 0), (10, 0), (10, 10), (8, 10)])  # index 0
+    s.add_exit([(0, 8), (2, 8), (2, 10), (0, 10)])    # index 1
+    assert len(s.exits) == 2
+    s.remove_exit(0)
+    assert len(s.exits) == 1
+    # Negative / out-of-range index raises IndexError with the same
+    # shape as distributions/zones/stages.
+    with pytest.raises(IndexError):
+        s.remove_exit(5)

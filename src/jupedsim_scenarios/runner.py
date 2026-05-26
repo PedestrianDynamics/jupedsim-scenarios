@@ -35,7 +35,7 @@ import zlib
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from types import MappingProxyType, SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 import jupedsim as jps
 import numpy as np
@@ -405,14 +405,15 @@ class Scenario:
         params["model_type"] = self.model_type
         return self.raw
 
-    def to_json(self, path: str | pathlib.Path | None = None) -> str | None:
+    def to_json(self) -> str:
         """Serialize the scenario as self-contained JSON.
 
-        With ``path=None`` (default) returns the JSON string. With a
-        path, writes to that path (creating parent directories) and
-        returns ``None``. The output embeds ``walkable_area_wkt`` at
-        the top level so :func:`load_scenario` can read it back via
-        the self-contained-JSON branch — completing the build → run →
+        Returns the JSON string. To write to disk, use
+        :func:`save_scenario` (mirrors :func:`load_scenario`).
+
+        The output embeds ``walkable_area_wkt`` at the top level so
+        :func:`load_scenario` can read it back via the
+        self-contained-JSON branch — completing the build → run →
         persist loop introduced by R2.1's ``add_*`` methods.
 
         Round-trip is value-preserving for everything the public API
@@ -426,13 +427,7 @@ class Scenario:
         """
         data = dict(self._synced_raw())
         data["walkable_area_wkt"] = self.walkable_area_wkt
-        text = json.dumps(data, indent=2)
-        if path is None:
-            return text
-        target = pathlib.Path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
-        return None
+        return json.dumps(data, indent=2)
 
     def _total_agents(self) -> int:
         return sum(
@@ -612,56 +607,43 @@ class Scenario:
 
     # -- resolver helpers (private) -----------------------------------------
 
-    def _resolve_distribution_id(self, id: int | str) -> str:
-        """Accept an int index or string key for a distribution."""
-        if isinstance(id, int):
-            keys = list(self.distributions.keys())
-            if id < 0 or id >= len(keys):
-                raise IndexError(
-                    f"Distribution index {id} out of range. "
-                    f"Available indices: 0..{len(keys) - 1}"
-                )
-            return keys[id]
-        if id not in self.distributions:
-            raise KeyError(
-                f"Distribution '{id}' not found. "
-                f"Available: {list(self.distributions.keys())}"
-            )
-        return id
+    @staticmethod
+    def _resolve_key(
+        kind: Literal["Distribution", "Exit", "Zone", "Stage"],
+        bucket: MappingProxyType[str, Any] | dict[str, Any],
+        id_or_index: int | str,
+    ) -> str:
+        """Shared int-or-string resolver for the collection lookups.
 
-    def _resolve_zone_id(self, id: int | str) -> str:
-        """Accept an int index or string key for a zone."""
-        if isinstance(id, int):
-            keys = list(self.zones.keys())
-            if id < 0 or id >= len(keys):
+        ``kind`` is used only for error messages
+        (``"Distribution"`` / ``"Exit"`` / ``"Zone"`` / ``"Stage"``).
+        """
+        if isinstance(id_or_index, int):
+            keys = list(bucket.keys())
+            if id_or_index < 0 or id_or_index >= len(keys):
                 raise IndexError(
-                    f"Zone index {id} out of range. "
+                    f"{kind} index {id_or_index} out of range. "
                     f"Available indices: 0..{len(keys) - 1}"
                 )
-            return keys[id]
-        if id not in self.zones:
+            return keys[id_or_index]
+        if id_or_index not in bucket:
             raise KeyError(
-                f"Zone '{id}' not found. "
-                f"Available: {list(self.zones.keys())}"
+                f"{kind} {id_or_index!r} not found. "
+                f"Available: {list(bucket.keys())}"
             )
-        return id
+        return id_or_index
 
-    def _resolve_stage_id(self, id: int | str) -> str:
-        """Accept an int index or string key for a stage/checkpoint."""
-        if isinstance(id, int):
-            keys = list(self.stages.keys())
-            if id < 0 or id >= len(keys):
-                raise IndexError(
-                    f"Stage index {id} out of range. "
-                    f"Available indices: 0..{len(keys) - 1}"
-                )
-            return keys[id]
-        if id not in self.stages:
-            raise KeyError(
-                f"Stage '{id}' not found. "
-                f"Available: {list(self.stages.keys())}"
-            )
-        return id
+    def _resolve_distribution_id(self, id_or_index: int | str) -> str:
+        return self._resolve_key("Distribution", self.distributions, id_or_index)
+
+    def _resolve_exit_id(self, id_or_index: int | str) -> str:
+        return self._resolve_key("Exit", self.exits, id_or_index)
+
+    def _resolve_zone_id(self, id_or_index: int | str) -> str:
+        return self._resolve_key("Zone", self.zones, id_or_index)
+
+    def _resolve_stage_id(self, id_or_index: int | str) -> str:
+        return self._resolve_key("Stage", self.stages, id_or_index)
 
     # -- additive ops --------------------------------------------------------
     # Mirror the web-UI JSON schema under the hood so loaded scenarios can
@@ -673,16 +655,18 @@ class Scenario:
         self,
         coordinates,
         *,
-        id: str | None = None,
+        key: str | None = None,
         number: int = 10,
         **agent_params,
     ) -> str:
         """Add a spawn distribution. Returns its id.
 
         ``coordinates`` accepts a shapely ``Polygon`` or any iterable of
-        ``(x, y)`` pairs. The polygon is automatically closed. Extra
-        keyword arguments are validated through the same allow-list as
-        ``set_agent_params`` so typos surface immediately.
+        ``(x, y)`` pairs. The polygon is automatically closed.
+        ``key`` picks a specific id; ``None`` auto-generates one
+        as ``jps-distributions_{n}``. Extra keyword arguments are
+        validated through the same allow-list as ``set_agent_params``
+        so typos surface immediately.
         """
         coords = _normalize_polygon_coords(coordinates)
         _ensure_positive_int("number", number)
@@ -690,7 +674,7 @@ class Scenario:
         # add_distribution behaves consistently with set_agent_params.
         _reject_unknown_kwargs("add_distribution", agent_params, _AGENT_PARAM_KEYS)
         agent_params = self._migrate_speed_aliases(agent_params)
-        dist_id = self._allocate_id("distributions", id)
+        dist_id = self._allocate_id("distributions", key)
         params = {"number": number, "distribution_mode": "by_number"}
         params.update(agent_params)
         self.raw.setdefault("distributions", {})[dist_id] = {
@@ -705,13 +689,13 @@ class Scenario:
         self,
         coordinates,
         *,
-        id: str | None = None,
+        key: str | None = None,
         max_throughput: float = 0.0,
     ) -> str:
         """Add an exit polygon. Returns its id."""
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("max_throughput", max_throughput)
-        exit_id = self._allocate_id("exits", id)
+        exit_id = self._allocate_id("exits", key)
         self.raw.setdefault("exits", {})[exit_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -724,13 +708,13 @@ class Scenario:
         self,
         coordinates,
         *,
-        id: str | None = None,
+        key: str | None = None,
         speed_factor: float = 1.0,
     ) -> str:
         """Add a speed-modifier zone. Returns its id."""
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("speed_factor", speed_factor)
-        zone_id = self._allocate_id("zones", id)
+        zone_id = self._allocate_id("zones", key)
         self.raw.setdefault("zones", {})[zone_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -742,7 +726,7 @@ class Scenario:
         self,
         coordinates,
         *,
-        id: str | None = None,
+        key: str | None = None,
         waiting_time: float = 0.0,
     ) -> str:
         """Add a waypoint / checkpoint stage. Returns its id.
@@ -753,7 +737,7 @@ class Scenario:
         """
         coords = _normalize_polygon_coords(coordinates)
         _ensure_non_negative_number("waiting_time", waiting_time)
-        stage_id = self._allocate_id("checkpoints", id)
+        stage_id = self._allocate_id("checkpoints", key)
         self.raw.setdefault("checkpoints", {})[stage_id] = {
             "type": "polygon",
             "coordinates": coords,
@@ -761,22 +745,21 @@ class Scenario:
         }
         return stage_id
 
-    def remove_distribution(self, id: int | str) -> None:
-        id = self._resolve_distribution_id(id)
-        self.raw["distributions"].pop(id)
+    def remove_distribution(self, key: int | str) -> None:
+        key = self._resolve_distribution_id(key)
+        self.raw["distributions"].pop(key)
 
-    def remove_exit(self, id: str) -> None:
-        if id not in self.exits:
-            raise KeyError(f"Exit {id!r} not found. Available: {list(self.exits)}")
-        self.raw["exits"].pop(id)
+    def remove_exit(self, key: int | str) -> None:
+        key = self._resolve_exit_id(key)
+        self.raw["exits"].pop(key)
 
-    def remove_zone(self, id: int | str) -> None:
-        id = self._resolve_zone_id(id)
-        self.raw["zones"].pop(id)
+    def remove_zone(self, key: int | str) -> None:
+        key = self._resolve_zone_id(key)
+        self.raw["zones"].pop(key)
 
-    def remove_stage(self, id: int | str) -> None:
-        id = self._resolve_stage_id(id)
-        self.raw["checkpoints"].pop(id)
+    def remove_stage(self, key: int | str) -> None:
+        key = self._resolve_stage_id(key)
+        self.raw["checkpoints"].pop(key)
 
     _RAW_KEY_BY_COLLECTION = {
         "distributions": "distributions",
@@ -845,52 +828,35 @@ class Scenario:
 
     # -- copy ----------------------------------------------------------------
 
-    def copy(self, **overrides) -> Scenario:
-        """Return an independent deep copy of this scenario, with optional field overrides.
+    def copy(self) -> Scenario:
+        """Return an independent deep copy of this scenario.
 
-        Overrides REPLACE the field outright — they don't merge. Pass
-        ``sim_params={"max_simulation_time": 60}`` and you lose every
-        other key that was in ``sim_params`` before. To partially update
-        a dict field, do it explicitly::
+        The clone shares no mutable state with the original — mutating
+        the clone (adding distributions, changing the seed, etc.) does
+        not affect the source. Used internally by ``run_sweep`` to
+        isolate per-trial scenarios.
+
+        For a copy with one or two fields changed, copy first then
+        assign::
 
             clone = base.copy()
-            clone.sim_params["max_simulation_time"] = 60
-
-        or write the field directly (``clone.seed = 42``,
-        ``clone.max_simulation_time = 60``, ``clone.model_type = "…"``).
-
-        As a guardrail, replacing ``sim_params`` with a dict that drops
-        keys present in the original raises ``TypeError``. The full
-        replacement is still possible — pass every original key
-        explicitly to acknowledge the intent.
+            clone.seed = 99
+            clone.max_simulation_time = 60
         """
         import copy
 
-        clone = copy.deepcopy(self)
-        for key, value in overrides.items():
-            if not hasattr(clone, key):
-                raise AttributeError(f"Scenario has no attribute '{key}'")
-            if key == "sim_params" and isinstance(value, dict):
-                missing = set(self.sim_params) - set(value)
-                if missing:
-                    raise TypeError(
-                        f"copy(sim_params=...) would drop existing keys "
-                        f"{sorted(missing)}. Replacements must include every "
-                        "original key (pass them explicitly to acknowledge), "
-                        "or mutate clone.sim_params after copy() / use a setter "
-                        "for a partial update."
-                    )
-            setattr(clone, key, value)
-        return clone
+        return copy.deepcopy(self)
 
     # -- setters -------------------------------------------------------------
 
     def set_agent_count(self, distribution_id: int | str, count: int):
-        """Set ``number`` on a distribution and force ``distribution_mode``
-        to ``"by_number"``. Thin convenience over
-        ``set_agent_params(id, number=count)`` for the common case;
-        the explicit form is preferred when you're already setting
-        other agent params at the same call site.
+        """Switch a distribution to by-number spawning with ``count`` agents.
+
+        Sets ``number=count`` AND unconditionally forces
+        ``distribution_mode="by_number"`` — so a distribution previously
+        configured as ``by_density`` will be flipped. If you want to
+        update the count without changing the spawning mode, call
+        ``set_agent_params(id, number=count)`` directly.
         """
         self.set_agent_params(distribution_id, number=count)
         # Force distribution_mode regardless of what set_agent_params would
@@ -1193,11 +1159,13 @@ def load_scenario(path: str) -> Scenario:
 def save_scenario(scenario: Scenario, path: str | pathlib.Path) -> None:
     """Write ``scenario`` to ``path`` as self-contained JSON.
 
-    Thin wrapper over :meth:`Scenario.to_json` for symmetry with
-    :func:`load_scenario`. Use ``scenario.to_json()`` (no path) when
-    you want the JSON as a string.
+    Side-effecting counterpart to :meth:`Scenario.to_json` (which
+    returns the JSON as a string), mirroring :func:`load_scenario`.
+    Parent directories are created if missing.
     """
-    scenario.to_json(path)
+    target = pathlib.Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(scenario.to_json(), encoding="utf-8")
 
 
 def _exactly_one(candidates: list, *, kind: str, where: str) -> Any:

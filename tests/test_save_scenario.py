@@ -40,10 +40,10 @@ def test_to_json_string_form_is_valid_self_contained():
     assert "exits" in data
 
 
-def test_to_json_writes_file_and_creates_parent_dir(tmp_path):
+def test_save_scenario_writes_file_and_creates_parent_dir(tmp_path):
     s = _scenario()
     target = tmp_path / "nested" / "scenario.json"
-    assert s.to_json(target) is None
+    save_scenario(s, target)
     assert target.exists()
     data = json.loads(target.read_text())
     assert data["walkable_area_wkt"] == SMALL_WKT

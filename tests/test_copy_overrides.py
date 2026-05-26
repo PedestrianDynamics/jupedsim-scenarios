@@ -1,14 +1,13 @@
-"""Scenario.copy() override semantics.
+"""``Scenario.copy()`` independence.
 
-Overrides replace fields outright. The dict-valued ``sim_params`` field
-has a guardrail: a replacement that drops existing keys raises
-``TypeError`` so accidental partial overrides surface instead of
-silently shrinking the params dict.
+``copy()`` returns a deep copy of the scenario. The clone shares no
+mutable state with the original — used by ``run_sweep`` to isolate
+per-trial scenarios. Field overrides via ``copy(seed=..., ...)`` are
+NOT supported; copy first, then mutate the clone (the setter / direct
+attribute assignment path is the single canonical mutation surface).
 """
 
 from __future__ import annotations
-
-import pytest
 
 from jupedsim_scenarios import Scenario
 
@@ -25,40 +24,34 @@ def _scenario() -> Scenario:
     )
 
 
-def test_copy_without_overrides_is_independent():
+def test_copy_returns_independent_scenario():
     s = _scenario()
     clone = s.copy()
+    # Mutating the clone doesn't bleed into the original.
     clone.sim_params["max_simulation_time"] = 999
+    clone.seed = 7
+    clone.model_type = "SocialForceModel"
     assert s.sim_params["max_simulation_time"] == 60
-
-
-def test_copy_scalar_override_works():
-    s = _scenario()
-    clone = s.copy(seed=7, model_type="SocialForceModel")
-    assert clone.seed == 7
-    assert clone.model_type == "SocialForceModel"
     assert s.seed == 42
+    assert s.model_type == "CollisionFreeSpeedModel"
 
 
-def test_copy_sim_params_dropping_keys_raises():
+def test_copy_then_assign_is_the_canonical_field_change_pattern():
     s = _scenario()
-    with pytest.raises(TypeError, match="would drop existing keys"):
-        s.copy(sim_params={"max_simulation_time": 60})  # extra_knob dropped
+    clone = s.copy()
+    clone.seed = 99
+    clone.max_simulation_time = 120
+    assert clone.seed == 99
+    assert clone.max_simulation_time == 120
+    assert s.seed == 42
+    assert s.max_simulation_time == 60
 
 
-def test_copy_sim_params_full_replacement_allowed():
+def test_copy_clones_raw_deeply():
+    # raw is a nested dict; the deep copy must give the clone its own
+    # nested mutable state so add_distribution etc. don't reach back.
     s = _scenario()
-    clone = s.copy(
-        sim_params={"max_simulation_time": 120, "extra_knob": 2.5, "added": "ok"}
-    )
-    assert clone.sim_params == {
-        "max_simulation_time": 120,
-        "extra_knob": 2.5,
-        "added": "ok",
-    }
-
-
-def test_copy_unknown_attribute_raises():
-    s = _scenario()
-    with pytest.raises(AttributeError, match="no attribute 'nope'"):
-        s.copy(nope=1)
+    s.raw["distributions"] = {"d0": {"parameters": {"number": 10}}}
+    clone = s.copy()
+    clone.raw["distributions"]["d0"]["parameters"]["number"] = 99
+    assert s.raw["distributions"]["d0"]["parameters"]["number"] == 10

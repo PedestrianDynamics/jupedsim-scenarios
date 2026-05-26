@@ -1,13 +1,12 @@
-"""Scenario layer — high-level Scenario / run_scenario API.
+"""High-level API for loading, building, running, and persisting
+JuPedSim scenarios.
 
-Wraps the simulation primitives in `utils.simulation_init` and
-`shared.direct_steering_runtime` into a load-and-run API used by the
-trajectory regression test and the `scripts/run_scenario.py` CLI. The
-web runtime itself goes through `services.simulation_service`.
+The package wraps the lower-level :mod:`jupedsim.Simulation` primitives
+into a load → mutate → run → analyse flow that matches what
+scientists building and sweeping scenarios actually want.
 
-This package replaced the former `backend/core/` mirror. Once
-`jupedsim.internal.scenarios` lands upstream (jupedsim PR #1565), this
-module's contents will migrate to thin wrappers around the upstream API.
+The :command:`jps-scenarios` CLI (entry point :func:`cli.main`)
+exposes the same surface for scripted pipelines.
 """
 
 from .runner import (
