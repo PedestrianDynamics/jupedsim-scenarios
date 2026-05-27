@@ -5,6 +5,75 @@ All notable changes to `jupedsim-scenarios` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] — 2026-05-27
+
+Documentation pass, quickstart bundle, and an editor-parity bugfix
+in agent placement. No public API change.
+
+### Fixed
+
+- **Placement spacing matches the Web-Based JuPedSim editor**
+  (#51, #59). `_get_max_agent_radius` previously inflated the
+  placement spacing to `mean + 3·std` for Gaussian-radius
+  distributions, rejecting packings the editor accepts. The
+  spacing now uses the mean radius; sampled radii above the mean
+  are handled by the simulator's dynamics phase. Concrete impact:
+  scenarios with `radius_std > 0` that failed with
+  `AgentNumberError` now place successfully.
+
+### Added
+
+- **Quickstart bundle** (#51, #57). `examples/assets/quickstart.zip`
+  plus `examples/howtos/00_quickstart.ipynb` — load, run, plot, and
+  clean up in a few cells against a tiny scenario shipped with the
+  repo. No web-editor export needed for a first run.
+- **`run → pedpy` cookbook** (#54).
+  `examples/cookbook/run_to_pedpy.ipynb` walks the full pipeline
+  from `run_scenario` to a Gaussian density heatmap using pedpy's
+  native SQLite reader and `plot_profiles`.
+- **CLI reference auto-generated from the parser** (#56) via
+  `sphinx-argparse`. `_build_parser` renamed to `build_parser` so
+  the directive can target it.
+- **`[viz]` extras** for matplotlib-driven examples and `nbmake` in
+  `[dev]` extras (#51).
+
+### Docs
+
+- New Sphinx pages: Concepts (object lifecycle, mutability,
+  cleanup), Choosing-an-entrypoint (decision table), Troubleshooting
+  (FAQ), CLI reference. Landing page reorganised with intro video,
+  animated demo GIF (#55), and a "Where to next" panel pointing at
+  the new pages.
+- How-tos regrouped by goal in `howtos.rst` (no filename renames so
+  external links stay valid).
+- README refreshed: intro video link, animated GIF, Citation
+  section, Contributing pointer, version bumped in the Roadmap.
+- `CONTRIBUTING.md` added (dev install, local checks, docs build).
+- Internal `api-design-cleanup.md` moved to `docs/dev/`.
+
+### CI
+
+- Full docs build (>30 min) restricted to tag pushes and manual
+  dispatch; Pages now publishes on tagged releases only (#60).
+  Every PR and main push runs a fast `notebook-smoke` job that
+  executes the quickstart notebook end-to-end.
+
+### Tests
+
+- Regression test pinning the quickstart placement and full
+  evacuation at the authored seed (#57).
+- Audit + pinning tests for the documented safety multipliers in
+  `simulation_init.py` (#58). Documents the rationale on 10
+  constants; flags 3 as `(unclear — pending audit)` for follow-up.
+
+### Open follow-ups
+
+- `PedestrianDynamics/jupedsim-web-community#131` — which
+  placement code path the editor's Run actually uses.
+- `PedestrianDynamics/jupedsim-web-community#132` — editor
+  Save-vs-Run geometry-scale mismatch surfaced while bundling the
+  quickstart.
+
 ## [0.6.1] — 2026-05-27
 
 ### Docs
