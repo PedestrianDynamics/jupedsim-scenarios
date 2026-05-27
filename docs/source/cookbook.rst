@@ -11,6 +11,7 @@ sweeps that touch multiple parts of the API at once.
 
    notebooks/cookbook/template_script
    notebooks/cookbook/scenario_api_demo
+   notebooks/cookbook/run_to_pedpy
    notebooks/cookbook/model_comparison
    notebooks/cookbook/bottleneck_zone_nt_diagram
    notebooks/cookbook/faster_is_slower
