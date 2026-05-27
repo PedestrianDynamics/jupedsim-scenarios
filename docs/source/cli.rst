@@ -74,8 +74,10 @@ On success ``run`` prints a single line of JSON to stdout:
       "sqlite_file": "/abs/path/to/out.sqlite"
     }
 
-``sqlite_file`` is ``null`` when ``--out`` was not given (the temp
-file has already been removed by the time the line is printed).
+``sqlite_file`` is ``null`` when ``--out`` was not given. The temp
+trajectory is written during the run, then removed in a ``finally``
+block immediately after the summary is printed — by the time the
+process exits, no trajectory file remains on disk.
 
 Exit codes
 ^^^^^^^^^^

@@ -100,8 +100,9 @@ If you have a bare ``.json`` without an embedded WKT geometry, the
 loader cannot reconstruct the geometry — point it at the directory
 or zip that holds the matching ``.wkt`` file.
 
-The CLI only accepts the bare-JSON form for the ``run`` subcommand.
-For zips, use the Python API or unzip first.
+The ``jps-scenarios run`` CLI routes through the same
+``load_scenario`` and accepts all three input shapes (zip,
+directory, self-contained JSON).
 
 Sphinx docs build fails on notebook execution
 =============================================
@@ -114,4 +115,11 @@ extras and run the offending notebook locally first:
 .. code-block:: bash
 
     pip install -r docs/requirements.txt
-    jupyter execute examples/howtos/04_sweep_basics.ipynb
+    jupyter nbconvert --to notebook --execute \
+        examples/howtos/04_sweep_basics.ipynb --output /tmp/out.ipynb
+
+Or, with the ``[dev]`` extras installed:
+
+.. code-block:: bash
+
+    pytest --nbmake examples/howtos/04_sweep_basics.ipynb
