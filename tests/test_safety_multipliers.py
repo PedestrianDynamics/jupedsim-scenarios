@@ -50,8 +50,12 @@ def test_estimate_max_capacity_floors_radius_at_0_1():
 
 
 def test_sample_agent_values_clamps_gaussian_mean_radius_to_1m():
-    # Pin the [0.1, 1.0] m mean clamp documented in `_sample_agent_values`:
-    # an oversized configured radius must collapse to <=1.0, not propagate.
+    # Pin the [0.1, 1.0] m mean clamp documented in `_sample_agent_values`.
+    # The strict-inequality checks below distinguish "mean clamped before
+    # sampling" (variance survives) from "post-sampling clip only" (all
+    # samples collapse to 1.0). Removing the mean clamp while keeping
+    # the post-sampling clip would let every sample saturate at 1.0 and
+    # break std() > 0.
     rng = np.random.RandomState(0)
     radii, _ = _sample_agent_values(
         {"radius": 2.0, "radius_distribution": "gaussian", "radius_std": 0.05},
@@ -60,10 +64,13 @@ def test_sample_agent_values_clamps_gaussian_mean_radius_to_1m():
     )
     assert radii.max() <= 1.0
     assert radii.min() >= 0.1
+    assert radii.std() > 0, "mean clamp must happen before sampling so variance survives"
+    assert (radii < 1.0).any(), "samples must spread below the upper clip"
 
 
 def test_sample_agent_values_clamps_gaussian_mean_v0_to_5ms():
-    # Pin the [0.1, 5.0] m/s mean clamp on desired speed.
+    # Pin the [0.1, 5.0] m/s mean clamp on desired speed. Strict-inequality
+    # checks distinguish mean-clamp-then-sample from post-sampling clip only.
     rng = np.random.RandomState(0)
     _, v0s = _sample_agent_values(
         {
@@ -77,6 +84,8 @@ def test_sample_agent_values_clamps_gaussian_mean_v0_to_5ms():
     )
     assert v0s.max() <= 5.0
     assert v0s.min() >= 0.1
+    assert v0s.std() > 0, "mean clamp must happen before sampling so variance survives"
+    assert (v0s < 5.0).any(), "samples must spread below the upper clip"
 
 
 def test_sample_agent_values_constant_radius_passes_through():

@@ -449,9 +449,11 @@ def _pick_initial_stage_target(
         except AttributeError:
             pass
 
-    # Why: (unclear — pending audit; see #53). 0.05 m floor, 0.8 scaling,
-    # and the reach_penetration ceiling are empirical defaults that keep
-    # sampled targets a small step inside the polygon edge.
+    # Why: (unclear — pending audit; see #53). Empirical floor on the
+    # target's clearance from the polygon edge: at least 0.05 m, at least
+    # 80% of the agent radius, and at least reach_penetration. The largest
+    # of the three wins via max(), keeping sampled targets a small step
+    # inside the polygon edge.
     target_clearance = max(0.05, float(agent_radius) * 0.8, float(reach_penetration))
     return _random_point_in_polygon(polygon, rng, min_clearance=target_clearance)
 
