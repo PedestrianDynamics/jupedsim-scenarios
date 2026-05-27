@@ -34,24 +34,22 @@ pip install -e ".[dev]"
 ## Single-run usage
 
 ```python
-from jupedsim_scenarios import Scenario, run_scenario
+from jupedsim_scenarios import load_scenario, run_scenario
 
-scenario = Scenario(
-    raw=data_dict,                          # the JSON exported by the web app
-    walkable_area_wkt=data_dict["walkable_area_wkt"],
-    model_type="CollisionFreeSpeedModel",
-    seed=42,
-    sim_params=data_dict["config"]["simulation_settings"]["simulationParams"],
-    source_path="my_scenario.json",
-)
+scenario = load_scenario("my_scenario.zip")
 result = run_scenario(scenario, seed=42)
-print(result.metrics["evacuation_time"])
+print(result.evacuation_time)
 df = result.trajectory_dataframe()
 result.cleanup()
 ```
 
-A higher-level `load_scenario(path)` is available for zipped exports
-(JSON + WKT file in the same archive or directory).
+`load_scenario` accepts a ZIP archive, a directory containing
+`<name>.json` + `<name>.wkt`, or a single self-contained JSON file
+(geometry embedded as `walkable_area_wkt`).
+
+To build a `Scenario` in pure Python — without going through a
+web-app export — see
+[`examples/howtos/08_build_from_scratch.ipynb`](examples/howtos/08_build_from_scratch.ipynb).
 
 ### Mutating a scenario — copy first, then assign
 
