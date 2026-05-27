@@ -13,12 +13,6 @@ Python toolkit for running, sweeping, and analyzing
 [Web-Based JuPedSim](https://github.com/PedestrianDynamics/jupedsim-web-community)
 editor.
 
-## Status
-
-Alpha (`0.3.3`). Single-run (`run_scenario`), Monte Carlo sweeps
-(`run_sweep` — now multiprocess), and a `jps-scenarios` CLI are shipped.
-Restartable / resumable sweeps land in 0.4.0.
-
 ## Install
 
 ```bash
