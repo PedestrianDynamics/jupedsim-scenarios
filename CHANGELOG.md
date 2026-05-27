@@ -5,6 +5,24 @@ All notable changes to `jupedsim-scenarios` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] — 2026-05-27
+
+### Docs
+
+- README refreshed for 0.6: trimmed the Monte Carlo section (the
+  workers / pickling / factory-sweeps detail is covered by how-tos
+  04 / 09 / 10), removed the broken `set_model_type(v)` call from
+  the sweep example (the method was removed in 0.5 — write the
+  field directly), and replaced the 0.1 → 0.4 historical roadmap
+  with a forward-looking list pointing at `CHANGELOG.md` for shipped
+  history.
+- Single-run example replaced with the `load_scenario` form (the
+  raw `Scenario(raw=data_dict, ...)` snippet referenced a phantom
+  `data_dict` variable and didn't run).
+
+No code changes — patch release exists to publish the corrected
+README on PyPI.
+
 ## [0.6.0] — 2026-05-27
 
 Round-3 nice-to-haves on top of the 0.5 redesign — same five design
