@@ -1,18 +1,21 @@
-"""Load a scenario ZIP, run it, and print summary metrics."""
+"""Load a scenario ZIP, run it, print metrics, and bundle results into a ZIP."""
 
 import sys
 import time
+import zipfile
 from pathlib import Path
 
 from jupedsim_scenarios import load_scenario, run_scenario
 
 
-def main(path: str, seed: int = 42, output: str | None = None) -> None:
+def main(path: str, seed: int = 42) -> None:
+    src = Path(path)
+    sqlite_path = src.with_name(f"{src.stem}_run.sqlite")
+    bundle_path = src.with_name(f"{src.stem}_run.zip")
+
     scenario = load_scenario(path)
-    if output is None:
-        output = str(Path(path).with_suffix(".sqlite"))
     t0 = time.perf_counter()
-    result = run_scenario(scenario, seed=seed, output_path=output)
+    result = run_scenario(scenario, seed=seed, output_path=str(sqlite_path))
     wall_time = time.perf_counter() - t0
 
     print(f"scenario:        {path}")
@@ -23,7 +26,14 @@ def main(path: str, seed: int = 42, output: str | None = None) -> None:
     print(f"total agents:    {result.total_agents}")
     print(f"evacuated:       {result.agents_evacuated}")
     print(f"remaining:       {result.agents_remaining}")
-    print(f"trajectory:      {result.sqlite_file}")
+
+    with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as out:
+        with zipfile.ZipFile(src) as inp:
+            for name in inp.namelist():
+                out.writestr(name, inp.read(name))
+        out.write(sqlite_path, arcname="trajectory.sqlite")
+
+    print(f"bundle:          {bundle_path}")
 
 
 if __name__ == "__main__":

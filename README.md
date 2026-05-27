@@ -50,6 +50,18 @@ To build a `Scenario` in pure Python — without going through a
 web-app export — see
 [`examples/howtos/08_build_from_scratch.ipynb`](examples/howtos/08_build_from_scratch.ipynb).
 
+### Quick CLI: run a ZIP and bundle the trajectory
+
+[`examples/run_zip.py`](examples/run_zip.py) loads a scenario ZIP,
+runs it, prints summary metrics (evacuation time, wall-clock time,
+agent counts), and writes `<name>_run.zip` containing the original
+`config.json` + `geometry.wkt` plus `trajectory.sqlite` — ready to
+drop back into the web app for visualization.
+
+```bash
+python examples/run_zip.py my_scenario.zip [seed]
+```
+
 ### Mutating a scenario — copy first, then assign
 
 `Scenario` is a mutable object. Direct assignments and `add_*` /
