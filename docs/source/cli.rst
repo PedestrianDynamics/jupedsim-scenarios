@@ -18,7 +18,7 @@ Command-line interface
 ======================
 
 The full parser is generated from
-:func:`jupedsim_scenarios.cli.build_parser`, so this reference is
+:py:func:`jupedsim_scenarios.cli.build_parser`, so this reference is
 always in sync with the installed CLI.
 
 .. argparse::
