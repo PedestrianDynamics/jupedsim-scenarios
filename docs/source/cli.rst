@@ -14,50 +14,30 @@ The CLI installs as a console script with the package:
     pip install jupedsim-scenarios
     jps-scenarios --version
 
-Subcommands
-===========
+Command-line interface
+======================
 
-``run``
--------
+The full parser is generated from
+:func:`jupedsim_scenarios.cli.build_parser`, so this reference is
+always in sync with the installed CLI.
 
-Execute a single scenario and emit a one-line JSON summary on
-stdout.
+.. argparse::
+   :module: jupedsim_scenarios.cli
+   :func: build_parser
+   :prog: jps-scenarios
 
-.. code:: bash
+Input shapes for ``SCENARIO``
+=============================
 
-    jps-scenarios run SCENARIO [--seed N] [--out PATH]
-                                [--dt SECONDS] [--every-nth-frame N]
+``jps-scenarios run`` routes through
+:py:func:`~jupedsim_scenarios.load_scenario` and accepts any of:
 
-Positional argument
-^^^^^^^^^^^^^^^^^^^
-
-``SCENARIO``
-    Scenario source. Accepts any of:
-
-    - A self-contained JSON file with ``walkable_area_wkt`` embedded.
-    - A ZIP archive exported from the web editor.
-    - A directory holding one ``<name>.json`` + one ``<name>.wkt``.
-
-Options
-^^^^^^^
-
-``--seed N``
-    Override the scenario's seed. Default: the value in the JSON.
-
-``--out PATH``
-    Where to write the trajectory SQLite. If omitted the file lives
-    in a tempdir and is deleted on exit. Metrics still print.
-
-``--dt SECONDS``
-    Iteration step in seconds. Default: JuPedSim's built-in
-    (currently ``0.01``).
-
-``--every-nth-frame N``
-    Trajectory writer stride. Default ``10`` (≈ 10 fps at
-    ``dt=0.01``). Set to ``1`` to record every iteration.
+- A self-contained JSON file with ``walkable_area_wkt`` embedded.
+- A ZIP archive exported from the web editor.
+- A directory holding one ``<name>.json`` + one ``<name>.wkt``.
 
 Output schema
-^^^^^^^^^^^^^
+=============
 
 On success ``run`` prints a single line of JSON to stdout:
 
@@ -80,7 +60,7 @@ block immediately after the summary is printed — by the time the
 process exits, no trajectory file remains on disk.
 
 Exit codes
-^^^^^^^^^^
+==========
 
 +------+----------------------------------------------------------+
 | Code | Meaning                                                  |
@@ -93,7 +73,7 @@ Exit codes
 +------+----------------------------------------------------------+
 
 Examples
-^^^^^^^^
+========
 
 Smoke test in CI (discard trajectory, keep summary):
 

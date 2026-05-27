@@ -87,7 +87,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             result.cleanup()
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="jps-scenarios",
         description="Run JuPedSim scenarios authored in the web app.",
@@ -132,7 +132,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _build_parser()
+    parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
 
