@@ -1,8 +1,16 @@
 name: Documentation
 
+# The full docs build re-executes every notebook (myst-nb force mode) and
+# takes >30 minutes. We keep that cost off the PR / main path:
+#
+#   - PR + push to main  → fast `notebook-smoke` job (one notebook).
+#   - tag push (v*) + manual dispatch → full `build` + `deploy`.
+#
+# Pages is published only from tagged releases.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -13,11 +21,37 @@ permissions:
   id-token: write
 
 jobs:
+  notebook-smoke:
+    name: Smoke-test quickstart notebook
+    # Cheap signal that the package + a representative notebook still
+    # execute end-to-end. Runs on every PR and main push.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: notebook-smoke-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package + notebook deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,viz]"
+          pip install jupyter
+      - name: Execute quickstart notebook
+        run: |
+          jupyter nbconvert --to notebook --execute \
+            examples/howtos/00_quickstart.ipynb \
+            --output /tmp/quickstart-executed.ipynb
+
   build:
     name: Build docs
+    # Full Sphinx build with every notebook executed. Only on tag push
+    # or manual dispatch — too expensive for routine PR / main runs.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # Scope per-ref so PRs and main don't queue behind each other; only
-    # cancel in-flight builds on the same ref.
     concurrency:
       group: docs-build-${{ github.ref }}
       cancel-in-progress: true
@@ -49,7 +83,7 @@ jobs:
           sphinx-build -b linkcheck docs/source docs/build/linkcheck
 
       - name: Upload artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/build/html
@@ -57,10 +91,10 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     # GitHub Pages only allows one in-flight deploy at a time; serialize
-    # main deploys (and let the latest one cancel any pending earlier one).
+    # deploys so a fast-following tag doesn't race the previous one.
     concurrency:
       group: pages-deploy
       cancel-in-progress: false
