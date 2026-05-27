@@ -134,7 +134,9 @@ On the table for future releases:
 - Greenfield `Scenario()` constructor — a builder shape that doesn't
   require pre-loading a JSON template (R3.7 in
   [`docs/api-design-cleanup.md`](docs/api-design-cleanup.md)).
-- Typed view classes for zones / stages / distributions (R3.10).
+- Typed `Zone` / `Stage` view classes with property setters,
+  replacing the `set_zone_speed_factor` / `set_checkpoint_waiting_time`
+  wrappers (R3.10).
 - Removal of the `v0` / `v0_std` / `v0_distribution` deprecated kwargs
   (currently still accepted with `DeprecationWarning`).
 
