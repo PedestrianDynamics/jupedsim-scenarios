@@ -30,9 +30,14 @@ analyzing `JuPedSim <https://www.jupedsim.org/>`_ scenarios authored in
 the `Web-Based JuPedSim <https://github.com/PedestrianDynamics/jupedsim-web-community>`_
 editor.
 
+.. image:: _static/jupedsim-scenarios-demo.gif
+   :alt: Demo — a few lines of Python to load and run a scenario
+   :align: center
+   :width: 720px
+
 .. raw:: html
 
-   <p>
+   <p style="text-align: center; margin-top: 1em;">
      <a href="https://youtu.be/GqVUDMuoSmc?si=qWKOeAVCzjG1vg60">
        <img src="https://img.youtube.com/vi/GqVUDMuoSmc/0.jpg"
             alt="jupedsim-scenarios intro video"
