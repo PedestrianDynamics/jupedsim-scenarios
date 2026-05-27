@@ -13,8 +13,6 @@ Python toolkit for running, sweeping, and analyzing
 [Web-Based JuPedSim](https://github.com/PedestrianDynamics/jupedsim-web-community)
 editor.
 
-![Demo: a few lines of Python](https://raw.githubusercontent.com/PedestrianDynamics/jupedsim-scenarios/main/docs/source/_static/jupedsim-scenarios-demo.gif)
-
 > **Intro video (3 min):**
 > [![Watch the intro](https://img.youtube.com/vi/GqVUDMuoSmc/0.jpg)](https://youtu.be/GqVUDMuoSmc?si=qWKOeAVCzjG1vg60)
 
