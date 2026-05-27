@@ -87,6 +87,7 @@ extensions = [
     "notfound.extension",
     "autoapi.extension",
     "myst_nb",
+    "sphinxarg.ext",
 ]
 
 templates_path: list[str] = []
