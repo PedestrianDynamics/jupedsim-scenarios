@@ -72,6 +72,16 @@ the R3 rationale per item.
   methods and properties — `copy(plot=lambda: ...)` silently replaced
   the method. The new shape is harder to misuse.
 
+### Deprecations
+
+- The `v0` / `v0_std` / `v0_distribution` kwargs on
+  `add_distribution` / `set_agent_params` remain accepted, still
+  emit `DeprecationWarning`, and continue to map to
+  `desired_speed` / `desired_speed_std` / `desired_speed_distribution`.
+  The 0.5.0 changelog promised removal in 0.6 — that was premature;
+  removal is deferred to a future release, matching the "future
+  release" wording already in `runner.py`.
+
 ### Refactored (no public-API change)
 
 - `set_agent_count` is now a thin fold over `set_agent_params` that
