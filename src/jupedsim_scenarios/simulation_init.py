@@ -162,8 +162,15 @@ def create_agent_parameters(
 
 def _estimate_max_capacity(polygon, max_radius):
     """Estimate how many agents fit in a polygon using packing approximation."""
+    # Why: floor avoids div-by-near-zero blowing up the capacity estimate
+    # when a caller passes radius=0 or a tiny test value.
     effective_radius = max(max_radius, 0.1)
     theoretical = polygon.area / (math.pi * effective_radius * effective_radius)
+    # Why: 0.5 approximates random circle packing density; hexagonal packing
+    # tops out at ~0.91 but jps.distribute_* lays out agents stochastically,
+    # so theoretical / 2 is a conservative upper bound used to reject
+    # over-packed scenarios early with a clear error instead of failing
+    # inside the placement call.
     return max(1, math.floor(theoretical * 0.5))
 
 
@@ -231,6 +238,9 @@ def _sample_agent_values(params, n_agents, rng):
     raw_v0 = params.get("desired_speed", params.get("v0", 1.2))
 
     if params.get("radius_distribution") == "gaussian" and params.get("radius_std"):
+        # Why: [0.1, 1.0] m matches the radius range the Web-Based JuPedSim
+        # editor exposes; clamping the mean first preserves variance (see
+        # docstring) instead of collapsing samples onto the clip ceiling.
         mean_radius = max(0.1, min(1.0, raw_radius))
         radii = rng.normal(mean_radius, params["radius_std"], n_agents).clip(0.1, 1.0)
     else:
@@ -239,6 +249,8 @@ def _sample_agent_values(params, n_agents, rng):
     v0_dist = params.get("desired_speed_distribution", params.get("v0_distribution"))
     v0_std = params.get("desired_speed_std", params.get("v0_std"))
     if v0_dist == "gaussian" and v0_std:
+        # Why: [0.1, 5.0] m/s matches the editor's desired-speed range; mean
+        # is clamped first for the same reason as radius above.
         mean_v0 = max(0.1, min(5.0, raw_v0))
         v0s = rng.normal(mean_v0, v0_std, n_agents).clip(0.1, 5.0)
     else:
@@ -255,6 +267,9 @@ def _normalize_speed_factor(value: Any) -> float:
         return 1.0
     if not np.isfinite(speed_factor) or speed_factor < 0.0:
         return 1.0
+    # Why: (unclear — pending audit; see #53). Note: stage_configs elsewhere
+    # in this module clamps speed_factor to [0, 1]; the two ranges disagree
+    # and should be reconciled once the editor-side contract is pinned.
     return min(speed_factor, 3.0)
 
 
@@ -407,6 +422,10 @@ def _pick_initial_stage_target(
     stage_cfg: dict[str, Any],
     rng,
     agent_radius: float,
+    # Why: (unclear — pending audit; see #53). 0.25 m is the empirical
+    # default also baked into the agent_wait_info dicts below; it controls
+    # how far inside a target polygon agents must penetrate to count as
+    # "arrived". Reach_dwell_seconds=0.2 alongside it is similarly empirical.
     reach_penetration: float = 0.25,
 ):
     """Pick a target point inside the stage polygon.
@@ -430,6 +449,11 @@ def _pick_initial_stage_target(
         except AttributeError:
             pass
 
+    # Why: (unclear — pending audit; see #53). Empirical floor on the
+    # target's clearance from the polygon edge: at least 0.05 m, at least
+    # 80% of the agent radius, and at least reach_penetration. The largest
+    # of the three wins via max(), keeping sampled targets a small step
+    # inside the polygon edge.
     target_clearance = max(0.05, float(agent_radius) * 0.8, float(reach_penetration))
     return _random_point_in_polygon(polygon, rng, min_clearance=target_clearance)
 
@@ -557,6 +581,9 @@ def build_agent_path_state(
     start_choices = path_choices.get(start_origin, [])
     if not start_choices:
         return None
+    # Why: 9973 is a prime used as a per-agent seed multiplier so adjacent
+    # agent ids produce well-separated RNG streams. Same constant is reused
+    # at every per-agent seeding site in this module.
     chooser_rng = random.Random(int(seed) + int(agent_id) * 9973)
     total = sum(max(0.0, float(weight)) for _, weight in start_choices)
     if total <= 0:
@@ -1071,6 +1098,10 @@ def _initialize_with_fallback(
             spawning_freqs_and_numbers.append([frequency, agents_per_spawn])
             num_agents_per_source.append(n_agents)
 
+            # Why: jps.distribute_* takes circle-disjointness constraints —
+            # two agents of radius r need centers ≥ 2r apart, and a circle of
+            # radius r needs ≥ r clearance from a wall. Anything larger here
+            # is an undocumented padding and was the bug fixed in #51.
             positions = _distribute_positions_until_filled(
                 spawn_area=clean_dist_area,
                 distance_to_agents=2 * max_radius,
@@ -1119,6 +1150,8 @@ def _initialize_with_fallback(
                     f"but area can hold at most ~{max_capacity}. "
                     f"Reduce the number of agents or enlarge the distribution area."
                 )
+            # Why: jps.distribute_* circle-disjointness contract (see
+            # _distribute_positions_until_filled call above for details).
             positions = _distribute_positions_by_number(
                 spawn_area=spawn_data["area"],
                 number_of_agents=requested_count,
@@ -1795,6 +1828,7 @@ def _add_agents(
                 spawning_freqs_and_numbers.append([frequency, agents_per_spawn])
                 num_agents_per_source.append(n_agents)
 
+                # Why: jps.distribute_* circle-disjointness contract.
                 positions = _distribute_positions_until_filled(
                     spawn_area=dist_area,
                     distance_to_agents=2 * max_radius,
@@ -1855,6 +1889,7 @@ def _add_agents(
                     f"but area can hold at most ~{max_capacity}. "
                     f"Reduce the number of agents or enlarge the distribution area."
                 )
+            # Why: jps.distribute_* circle-disjointness contract.
             positions = _distribute_positions_by_number(
                 spawn_area=spawn_data["area"],
                 number_of_agents=requested_count,
