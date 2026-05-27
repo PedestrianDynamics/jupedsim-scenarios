@@ -13,6 +13,9 @@ Python toolkit for running, sweeping, and analyzing
 [Web-Based JuPedSim](https://github.com/PedestrianDynamics/jupedsim-web-community)
 editor.
 
+> **Intro video (3 min):**
+> [![Watch the intro](https://img.youtube.com/vi/GqVUDMuoSmc/0.jpg)](https://youtu.be/GqVUDMuoSmc?si=qWKOeAVCzjG1vg60)
+
 ## Install
 
 ```bash
@@ -127,13 +130,13 @@ sphinx-build -b html docs/source docs/build/html
 
 ## Roadmap
 
-Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.6.0**.
+Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.6.1**.
 
 On the table for future releases:
 
 - Greenfield `Scenario()` constructor — a builder shape that doesn't
   require pre-loading a JSON template (R3.7 in
-  [`docs/api-design-cleanup.md`](docs/api-design-cleanup.md)).
+  [`docs/dev/api-design-cleanup.md`](docs/dev/api-design-cleanup.md)).
 - Typed `Zone` / `Stage` view classes with property setters,
   replacing the `set_zone_speed_factor` / `set_checkpoint_waiting_time`
   wrappers (R3.10).
@@ -142,6 +145,18 @@ On the table for future releases:
 
 Concrete proposals are tracked under
 [issues](https://github.com/PedestrianDynamics/jupedsim-scenarios/issues).
+
+## Citation
+
+If `jupedsim-scenarios` supports work you publish, please cite the
+upstream [JuPedSim](https://www.jupedsim.org/stable/citing.html)
+project and link to this repository. A dedicated DOI for this
+toolkit will be added once a Zenodo deposit is in place.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev install, local
+checks, and PR conventions.
 
 ## License
 

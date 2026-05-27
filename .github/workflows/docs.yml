@@ -41,6 +41,13 @@ jobs:
         run: |
           sphinx-build -b html docs/source docs/build/html
 
+      - name: Link check
+        # Non-blocking — external sites occasionally rate-limit CI runners.
+        # Surface broken local references in the log without failing the build.
+        continue-on-error: true
+        run: |
+          sphinx-build -b linkcheck docs/source docs/build/linkcheck
+
       - name: Upload artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3

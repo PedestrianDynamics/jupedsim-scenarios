@@ -33,6 +33,10 @@ dev = [
     "pytest>=8",
     "ruff>=0.5",
     "mypy>=1.11",
+    "nbmake>=1.5",
+]
+viz = [
+    "matplotlib>=3.7",
 ]
 
 [project.scripts]
