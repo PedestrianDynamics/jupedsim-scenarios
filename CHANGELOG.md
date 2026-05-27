@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.3] — 2026-05-27
+
+Docs and examples polish, plus a friendlier placement-error message.
+No public API change.
+
+### Added
+
+- **`examples/run_zip.py`** — a small CLI that loads a scenario ZIP,
+  runs it, prints summary metrics (evacuation time, wall-clock time,
+  agent counts), and writes `<name>_run.zip` bundling the original
+  `config.json` + `geometry.wkt` with the produced
+  `trajectory.sqlite`, ready to drop back into the Web-Based JuPedSim
+  editor for visualization.
+
+### Changed
+
+- **README:** documented `examples/run_zip.py`; removed the demo GIF
+  (the 3-minute intro video covers the same ground).
+- **Quickstart notebook:** uses pedpy's `plot_trajectories` and a
+  data-driven `vmax` (#62, #63).
+
 ### Fixed
 
 - **Placement-failure errors now reference the distribution id, not an
@@ -24,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in ``_add_agents``, which already used ``dist_key``). Regression
   test exercises the legacy path explicitly by stripping
   ``journeys_v2`` from the fixture so the dispatcher routes to
-  ``_initialize_with_fallback``.
+  ``_initialize_with_fallback``. (#64)
 
 ## [0.6.2] — 2026-05-27
 
