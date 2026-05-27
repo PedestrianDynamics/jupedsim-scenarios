@@ -933,6 +933,10 @@ def _initialize_with_fallback(
     # Step 2: Handle distributions (use walkable area if none provided)
     distributions = []
     distribution_params = []  # Store parameters for each distribution
+    # Stable per-distribution identifier (e.g. "jps-distributions_0") carried
+    # through every spawn step so user-facing errors reference what the
+    # editor / config author wrote, not an opaque enumerate index.
+    distribution_ids: list[str] = []
     total_agents = 0
 
     if "distributions" in data and data["distributions"]:
@@ -943,6 +947,7 @@ def _initialize_with_fallback(
                 if isinstance(coords, list) and len(coords) >= 3:
                     dist_polygon = Polygon(coords)
                     distributions.append(dist_polygon)
+                    distribution_ids.append(str(dist_id))
 
                     # Get parameters for this specific distribution
                     params = dist_data.get("parameters", {})
@@ -987,6 +992,7 @@ def _initialize_with_fallback(
     if not distributions:
         logger.info("No valid distributions found; using walkable area as fallback")
         distributions = [walkable_area.polygon]
+        distribution_ids = ["walkable-area-fallback"]
         distribution_params = [
             {
                 "number": default_n_agents,
@@ -1035,6 +1041,8 @@ def _initialize_with_fallback(
     for i, (dist_area, dist_params) in enumerate(
         zip(distributions, distribution_params, strict=False)
     ):
+        # Stable identifier for user-facing log/error messages.
+        dist_id = distribution_ids[i] if i < len(distribution_ids) else f"index-{i}"
         use_flow_spawning = dist_params.get("use_flow_spawning", False)
         dist_mode, requested_n_agents = _get_distribution_mode_and_count(dist_params)
 
@@ -1051,7 +1059,7 @@ def _initialize_with_fallback(
         clean_dist_area = shapely.intersection(clean_dist_area, walkable_area.polygon)
 
         if clean_dist_area.is_empty:
-            logger.warning(f"Distribution area {i} is outside walkable area")
+            logger.warning(f"Distribution '{dist_id}' is outside walkable area")
             continue
 
         if use_flow_spawning:
@@ -1069,7 +1077,7 @@ def _initialize_with_fallback(
                 n_agents = max(1, int(max_capacity * percentage / 100))
 
             if n_agents <= 0:
-                logger.warning(f"No agents fit in distribution {i}")
+                logger.warning(f"No agents fit in distribution '{dist_id}'")
                 continue
 
             # Get flow parameters
@@ -1083,7 +1091,7 @@ def _initialize_with_fallback(
             flow_rate = n_agents / flow_duration
             if flow_rate > max_capacity:
                 raise ValueError(
-                    f"Distribution {i}: flow rate of {flow_rate:.1f} agents/s "
+                    f"Distribution '{dist_id}': flow rate of {flow_rate:.1f} agents/s "
                     f"exceeds area capacity of {max_capacity} agents. "
                     f"Reduce the number of agents ({n_agents}) or increase "
                     f"the flow duration ({flow_duration:.1f}s)."
@@ -1114,6 +1122,7 @@ def _initialize_with_fallback(
             flow_distributions.append(
                 {
                     "dist_index": i,
+                    "dist_id": dist_id,
                     "params": dist_params,
                     "start_time": flow_start_time,
                     "end_time": flow_end_time,
@@ -1122,12 +1131,17 @@ def _initialize_with_fallback(
             )
 
             logger.info(
-                f"Flow spawning: Distribution {i} - {n_agents} agents over {flow_duration}s"
+                f"Flow spawning: Distribution '{dist_id}' - {n_agents} agents over {flow_duration}s"
             )
         else:
             # Store for immediate spawning
             immediate_spawn_distributions.append(
-                {"area": clean_dist_area, "params": dist_params, "index": i}
+                {
+                    "area": clean_dist_area,
+                    "params": dist_params,
+                    "index": i,
+                    "dist_id": dist_id,
+                }
             )
 
     # Handle immediate spawning (with optional premovement)
@@ -1146,7 +1160,7 @@ def _initialize_with_fallback(
                 requested_count = max(1, int(max_capacity * percentage / 100))
             if requested_count > max_capacity:
                 raise ValueError(
-                    f"Distribution {spawn_data['index']}: requested {requested_count} agents "
+                    f"Distribution '{spawn_data['dist_id']}': requested {requested_count} agents "
                     f"but area can hold at most ~{max_capacity}. "
                     f"Reduce the number of agents or enlarge the distribution area."
                 )
@@ -1161,7 +1175,7 @@ def _initialize_with_fallback(
             )
         except Exception as e:
             error_msg = (
-                f"CRITICAL: Failed to place agents in distribution area {spawn_data['index']}. "
+                f"CRITICAL: Failed to place agents in distribution '{spawn_data['dist_id']}'. "
                 f"Error: {str(e)}. This usually means the spawn area is too small or crowded. "
                 f"Consider: 1) Making the distribution area larger, 2) Reducing the number of agents, "
                 f"3) Increasing distance between agents, or 4) Checking for obstacles in the area."
