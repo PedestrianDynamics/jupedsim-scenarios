@@ -79,67 +79,28 @@ base = load_scenario("faster_is_slower.zip")
 
 sweep = run_sweep(
     base,
-    axes={
-        "v0":    [0.8, 1.2, 1.6, 1.8],
-        "model": ["CollisionFreeSpeedModel", "AnticipationVelocityModel"],
-    },
-    apply={
-        "v0":    lambda s, v: s.set_agent_params(0, desired_speed=v),
-        "model": lambda s, v: s.set_model_type(v),
-    },
+    axes={"v0": [0.8, 1.2, 1.6, 1.8]},
+    apply={"v0": lambda s, v: s.set_agent_params(0, desired_speed=v)},
     seeds=range(40, 50),
-    output_dir="runs/",
-)
-
-df = sweep.to_dataframe()       # one row per (v0, model, seed) trial
-print(df.groupby(["v0", "model"])["evacuation_time"].agg(["mean", "std"]))
-sweep.cleanup()                 # delete the per-trial sqlite files
-```
-
-The library walks the cartesian product of the named axes, calls each
-axis's `apply` function on an isolated `.copy()` of the base scenario,
-runs the simulation, and tabulates the results. Anything the
-`Scenario.set_*` mutators can change is fair game for sweeping.
-
-Pass ``workers=N`` (or ``workers=0`` for one worker per CPU) to run
-trials in parallel:
-
-```python
-sweep = run_sweep(base, axes=..., apply=..., seeds=range(40, 50), workers=4)
-```
-
-Mutations are applied in the calling process — only the resulting
-mutated `Scenario` crosses the process boundary, so user `apply`
-lambdas don't need to be picklable.
-
-### Factory-style sweeps
-
-If the scenario can't be expressed as one base mutated by axis values
-— typically because the geometry itself depends on the trial parameters
-— use `run_sweep_from_factory` instead. Each trial parameter dict is
-handed to your factory; the factory builds a fresh `Scenario` and
-optionally returns a payload that rides along on `Trial.extras`:
-
-```python
-from jupedsim_scenarios import run_sweep_from_factory
-
-def build_loop(params):
-    scenario, geometry = build_loop_scenario(
-        num_agents=params["num_agents"],
-        spacing=TRACK_LENGTH / params["num_agents"],
-    )
-    return scenario, geometry  # extras travel with the trial
-
-sweep = run_sweep_from_factory(
-    build_loop,
-    trials=[{"num_agents": n} for n in (50, 100, 200, 400)],
-    seeds=[42],
     workers=4,
 )
-df = sweep.to_dataframe()           # one row per trial; "num_agents" is a column
-for t in sweep.trials:
-    geometry = t.extras             # whatever the factory returned alongside
+
+df = sweep.to_dataframe()
+print(df.groupby("v0")["evacuation_time"].agg(["mean", "std"]))
+sweep.cleanup()
 ```
+
+`run_sweep` walks the cartesian product of `axes`, applies each axis's
+mutator to an isolated `.copy()` of the base, and runs the trials.
+`workers=0` uses one worker per CPU. For sweeps that need a different
+scenario *shape* per trial — geometry that depends on the parameters,
+journeys that vary — use `run_sweep_from_factory` instead.
+
+For deeper coverage see the how-to notebooks:
+
+- [`04_sweep_basics`](examples/howtos/04_sweep_basics.ipynb) — axes / apply / paired conditions
+- [`09_sweep_save_load`](examples/howtos/09_sweep_save_load.ipynb) — `SweepResult.save` / `load`
+- [`10_sweep_via_copy`](examples/howtos/10_sweep_via_copy.ipynb) — factory sweeps and `Scenario.copy()`
 
 ## Command line
 
@@ -153,10 +114,8 @@ or scripted pipelines; notebook workflows should stay on the Python API.
 
 ## Documentation
 
-The full API reference and the bottleneck tutorial are built with Sphinx
-(stack mirrors [jupedsim.org](https://www.jupedsim.org/): `sphinx-book-theme`
-+ `sphinx-autoapi` + `myst-nb`). Every push to `main` rebuilds and deploys
-the site via the `.github/workflows/docs.yml` GitHub Pages workflow.
+API reference, bottleneck tutorial, and how-tos are built with Sphinx
+and deployed on every push to `main` via GitHub Pages.
 
 To build locally:
 
@@ -164,27 +123,25 @@ To build locally:
 pip install -e .
 pip install -r docs/requirements.txt
 sphinx-build -b html docs/source docs/build/html
-open docs/build/html/index.html        # macOS; use xdg-open on Linux
 ```
-
-`conf.py` mirrors `examples/bottleneck_tutorial.ipynb` into the docs tree at
-build time, so there's no committed duplicate. If you edit the notebook,
-regenerate it first with `python examples/_build_notebook.py` and re-execute
-with `jupyter nbconvert --to notebook --execute --inplace
-examples/bottleneck_tutorial.ipynb` before building the docs.
 
 ## Roadmap
 
-| Release | Scope                                                              |
-| ------- | ------------------------------------------------------------------ |
-| 0.1.0   | Verbatim extraction of `Scenario` + `run_scenario` from web app.   |
-| 0.2.0   | `run_sweep(scenario, axes={...}, seeds=...)`.                      |
-| 0.3.0   | Multiprocess worker pool + `jps-scenarios` CLI.                    |
-| 0.3.1   | Public aliases for helpers shared with Web-Based-Jupedsim.         |
-| 0.3.2   | First PyPI release.                                                |
-| 0.3.3   | Fix: checkpoints honored without journeys (#8).                    |
-| 0.3.4   | `run_sweep_from_factory` for factory-style sweeps (this release, #11). |
-| 0.4.0   | Restartable / resumable sweeps, persisted results.                 |
+Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.6.0**.
+
+On the table for future releases:
+
+- Greenfield `Scenario()` constructor — a builder shape that doesn't
+  require pre-loading a JSON template (R3.7 in
+  [`docs/api-design-cleanup.md`](docs/api-design-cleanup.md)).
+- Typed `Zone` / `Stage` view classes with property setters,
+  replacing the `set_zone_speed_factor` / `set_checkpoint_waiting_time`
+  wrappers (R3.10).
+- Removal of the `v0` / `v0_std` / `v0_distribution` deprecated kwargs
+  (currently still accepted with `DeprecationWarning`).
+
+Concrete proposals are tracked under
+[issues](https://github.com/PedestrianDynamics/jupedsim-scenarios/issues).
 
 ## License
 
