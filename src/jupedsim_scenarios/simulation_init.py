@@ -168,15 +168,16 @@ def _estimate_max_capacity(polygon, max_radius):
 
 
 def _get_max_agent_radius(params):
-    """Get max effective radius for spacing calculations.
+    """Get the radius used for placement spacing.
 
-    For Gaussian distribution, use mean + 3*std (99.7% coverage) clipped to max 1.0.
-    For constant distribution, use mean radius.
+    Returns the mean radius for both constant and Gaussian distributions,
+    matching the placement behavior of the Web-Based JuPedSim editor. A
+    previous implementation used mean + 3*std as a safety margin for the
+    Gaussian case; that turned out to be too conservative and rejected
+    packings the editor accepts. Initial micro-overlaps from sampled
+    radii above the mean are handled by the simulator's dynamics phase.
     """
-    mean_radius = params.get("radius", 0.2)
-    if params.get("radius_distribution") == "gaussian" and params.get("radius_std"):
-        return min(mean_radius + 3 * params["radius_std"], 1.0)
-    return mean_radius
+    return params.get("radius", 0.2)
 
 
 def _get_distribution_mode_and_count(params):
