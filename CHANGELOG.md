@@ -5,6 +5,95 @@ All notable changes to `jupedsim-scenarios` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-05-27
+
+Round-3 nice-to-haves on top of the 0.5 redesign — same five design
+rules (simplicity, consistency, sensible defaults, mental models,
+discoverability), smaller scope. See `docs/api-design-cleanup.md` for
+the R3 rationale per item.
+
+### Added
+
+- **`Scenario.to_json()` + `save_scenario(scenario, path)`** (R3.2) —
+  serialize a scenario as self-contained JSON so the
+  build-mutate-run-persist loop closes. `to_json()` returns a string;
+  `save_scenario` writes to disk (mirrors `load_scenario`,
+  parallels `json.dumps`/`json.dump`).
+- **`SweepResult.save(path)` + `SweepResult.load(path)`** (R3.1) —
+  persist a sweep's axes, seeds, per-trial metrics and sqlite paths
+  as JSON; reload metadata later without re-running. Trajectory
+  sqlites stay where `output_dir` put them.
+- **`SweepResult.__getitem__`** (R3.9) — `sweep[0]` / `sweep[-1]` /
+  `sweep[a:b]` work consistently with `len(sweep)` and
+  `for t in sweep`. Typed via `@overload`.
+- **`remove_exit` accepts an int index** (R3.4) — parity with
+  `remove_distribution` / `remove_zone` / `remove_stage`. The four
+  resolvers now share one `_resolve_key` helper, so error messages
+  stay uniform.
+- **CLI passthrough** (R3.5) — `jps-scenarios run` forwards `--dt`,
+  `--every-nth-frame`, and `--output-path` to the runner.
+- **Four new how-to notebooks** under `examples/howtos/`:
+  - `07_interactive_runner` — chunked `ScenarioRunner` with
+    mid-run inspection and partial trajectory via pedpy.
+  - `08_build_from_scratch` — author a `Scenario` in pure Python
+    with `add_*` + `save_scenario`.
+  - `09_sweep_save_load` — sweep persistence round-trip + slicing
+    + the metrics-survive-cleanup behaviour.
+  - `10_sweep_via_copy` — `Scenario.copy()` + `run_sweep_from_factory`
+    for trial-shape variation that `axes`/`apply` can't express.
+
+### Breaking changes
+
+- **`add_*` / `remove_*` kwarg `id` renamed to `key`** (R3.12). The
+  `id` name shadowed the builtin and read inconsistently across the
+  add/remove pair. Callers passing `id=` by keyword must migrate:
+  ```python
+  # Before
+  scenario.add_distribution(poly, id="src-A", number=20)
+  scenario.remove_exit(id="exit-A")
+
+  # After
+  scenario.add_distribution(poly, key="src-A", number=20)
+  scenario.remove_exit(key="exit-A")
+  ```
+  Positional calls (`scenario.remove_exit("exit-A")`) are unaffected.
+- **`Trial.success` removed** (R3.6) — it was the only proxied
+  result field; mixed shorthand. Read `trial.result.success` (and
+  `trial.result.evacuation_time`, etc.) for a single canonical path.
+- **`Scenario.copy(**overrides)` no longer accepts overrides** (R3.11).
+  `copy()` only returns a deep clone now; copy-then-assign for
+  field changes:
+  ```python
+  clone = base.copy()
+  clone.seed = 99
+  clone.max_simulation_time = 60
+  ```
+  Background: the previous `hasattr`-based override loop accepted
+  methods and properties — `copy(plot=lambda: ...)` silently replaced
+  the method. The new shape is harder to misuse.
+
+### Refactored (no public-API change)
+
+- `set_agent_count` is now a thin fold over `set_agent_params` that
+  also forces `distribution_mode="by_number"` (R3.3). Docstring
+  leads with the side effect; for count-only changes call
+  `set_agent_params(id, number=n)` directly.
+- `_resolve_key`'s `kind` parameter is typed
+  `Literal["Distribution", "Exit", "Zone", "Stage"]` so typos at the
+  four call sites surface in Pyright.
+- Package docstring rewritten (R3.8) — old text referenced the
+  retired `backend/core/` mirror and a never-shipped
+  `jupedsim.internal.scenarios` migration.
+
+### Docs
+
+- README: new "Mutating a scenario — copy first, then assign"
+  subsection right after Single-run usage. Scenario is mutable in
+  place; users want explicit guidance on when to `copy()`.
+- `01_inspect_scenario` how-to: parallel callout before the
+  log-verbosity section, so the footgun is seen before any setter
+  is reached for.
+
 ## [0.5.0] — 2026-05-26
 
 A scientist/power-user pass framed against five design rules
@@ -74,30 +163,6 @@ per-item rationale.
 - `ScenarioRunner.step` / `.run_until` / `.result` raise
   `RuntimeError` after `close()` instead of silently using a closed
   writer.
-- **`add_*` / `remove_*` kwarg `id` renamed to `key`** (R3.12). The
-  `id` name shadowed the builtin and read inconsistently across the
-  add/remove pair. Callers passing `id=` by keyword must migrate:
-  ```python
-  # Before
-  scenario.add_distribution(poly, id="src-A", number=20)
-  scenario.remove_exit(id="exit-A")
-
-  # After
-  scenario.add_distribution(poly, key="src-A", number=20)
-  scenario.remove_exit(key="exit-A")
-  ```
-  Positional calls (`scenario.remove_exit("exit-A")`) are unaffected.
-- **`Trial.success` removed** (R3.6) — read `trial.result.success`
-  (and `trial.result.evacuation_time`, etc.) for a single canonical
-  path into result fields.
-- **`Scenario.copy(**overrides)` no longer accepts overrides** (R3.11).
-  `copy()` now only returns a deep clone; copy-then-assign for field
-  changes:
-  ```python
-  clone = base.copy()
-  clone.seed = 99
-  clone.max_simulation_time = 60
-  ```
 
 ### Deprecation removals (none in 0.5)
 
