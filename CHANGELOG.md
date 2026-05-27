@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Placement-failure errors now reference the distribution id, not an
-  opaque enumerate index.** `_initialize_complete_config` raised
+  opaque enumerate index.** The legacy spawn path
+  (``_initialize_with_fallback``, used whenever ``journeys_v2`` is
+  absent or no distribution carries ``journey_weights``) raised
   ``CRITICAL: Failed to place agents in distribution area 0`` where
   ``0`` was the internal enumerate position of the spawn loop. Users
   of the Web-Based JuPedSim editor (whose start areas are labelled
@@ -18,9 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   specific area — both because the index was zero-based against a
   one-based UI and because it ignored the stable
   ``jps-distributions_N`` key. The id is now threaded through every
-  log line and error in the legacy spawn path (matching the journey-v2
-  path, which already used ``dist_key``). Regression test pins the new
-  contract.
+  log line and error in the legacy path (matching the journey-v2 path
+  in ``_add_agents``, which already used ``dist_key``). Regression
+  test exercises the legacy path explicitly by stripping
+  ``journeys_v2`` from the fixture so the dispatcher routes to
+  ``_initialize_with_fallback``.
 
 ## [0.6.2] — 2026-05-27
 

@@ -27,12 +27,25 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 @pytest.fixture
 def overcrowded_scenario():
     """Same geometry as the corridor fixture, but the start area is asked
-    to hold ten thousand agents — guaranteed to fail at placement."""
+    to hold ten thousand agents — guaranteed to fail at placement.
+
+    We strip ``journeys_v2`` and ``journey_weights`` so the dispatcher in
+    ``initialize_simulation_from_json`` routes to
+    ``_initialize_with_fallback`` (the legacy path whose error messages
+    are the subject of this regression). The journey-v2 path
+    (``_add_agents``) already reports ``dist_key`` correctly; keeping the
+    journey-v2 wiring on would make this test pass vacuously without
+    exercising the fixed code.
+    """
     pytest.importorskip("jupedsim")
     from jupedsim_scenarios import Scenario
 
     data = json.loads((FIXTURES / "corridor_simple.json").read_text())
     data["distributions"]["jps-distributions_0"]["parameters"]["number"] = 10000
+    # Force the dispatcher down the fallback path:
+    data.pop("journeys_v2", None)
+    data["distributions"]["jps-distributions_0"].pop("journey_weights", None)
+
     sim_params = data["config"]["simulation_settings"]["simulationParams"]
     return Scenario(
         raw=data,
