@@ -81,7 +81,9 @@ Quick start
     df = result.trajectory_dataframe()   # pandas DataFrame
     result.cleanup()
 
-For a guided tour with sweeps, model comparison, and a 2-D
+In a hurry? The :doc:`5-minute quickstart <notebooks/howtos/00_quickstart>`
+uses a tiny scenario shipped with the repo — no web-editor export
+needed. For a guided tour with sweeps, model comparison, and a 2-D
 ``model × bottleneck width`` study, see the
 :doc:`bottleneck tutorial <notebooks/bottleneck_tutorial>`.
 

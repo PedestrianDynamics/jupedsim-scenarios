@@ -5,9 +5,17 @@ How-tos
 Short, focused notebooks. Each answers one question a newcomer asks
 after the :doc:`bottleneck tutorial <notebooks/bottleneck_tutorial>`.
 
-Notebooks are grouped by goal. The filename prefixes (``01_``,
-``02_``, …) are historical and do **not** imply a learning order —
+Notebooks are grouped by goal. The filename prefixes (``00_``,
+``01_``, …) are historical and do **not** imply a learning order —
 read whichever section matches what you need to do.
+
+Start here
+==========
+
+.. toctree::
+   :maxdepth: 1
+
+   notebooks/howtos/00_quickstart
 
 Inspecting a scenario
 =====================
