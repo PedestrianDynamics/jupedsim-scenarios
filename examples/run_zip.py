@@ -40,5 +40,5 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("usage: python run_zip.py <scenario.zip> [seed]")
         sys.exit(1)
-    seed = int(sys.argv[2]) if len(sys.argv) > 2 else 42
+    seed = int(sys.argv[2]) if len(sys.argv) > 2 else None
     main(sys.argv[1], seed)
