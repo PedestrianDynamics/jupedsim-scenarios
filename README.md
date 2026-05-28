@@ -117,6 +117,34 @@ For deeper coverage see the how-to notebooks:
 - [`10_sweep_save_load`](examples/howtos/10_sweep_save_load.ipynb) — `SweepResult.save` / `load`
 - [`11_sweep_via_copy`](examples/howtos/11_sweep_via_copy.ipynb) — factory sweeps and `Scenario.copy()`
 
+## Visualisation
+
+Visualisation needs the optional `viz` extra (matplotlib + plotly):
+
+```bash
+pip install "jupedsim-scenarios[viz]"
+```
+
+Two entry points cover the common cases:
+
+```python
+scenario = load_scenario("my_scenario.zip")
+scenario.plot()                      # static geometry: distributions, exits, zones, checkpoints
+
+result = run_scenario(scenario, seed=42)
+result.visualise()                   # interactive plotly playback of the trajectory
+result.visualise(save_path="run.html")  # write a self-contained interactive page
+```
+
+`Scenario.plot()` returns a matplotlib `Axes`; pass `ax=` to draw into an
+existing figure, or `show_journeys=False` / `show_trajectories=` to control
+overlays. `ScenarioResult.visualise()` returns a `plotly.graph_objects.Figure`
+that renders inline in Jupyter — just make it the last line of a cell. Frames
+are subsampled automatically for long runs; override with `every_nth_frame`.
+
+See [`02_visualisation`](examples/howtos/02_visualisation.ipynb) for a full
+walkthrough.
+
 ## Command line
 
 ```
@@ -142,7 +170,7 @@ sphinx-build -b html docs/source docs/build/html
 
 ## Roadmap
 
-Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.6.2**.
+Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.6.4**.
 
 On the table for future releases:
 
