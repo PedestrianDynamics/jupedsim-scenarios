@@ -66,6 +66,27 @@ trial. The copy-first discipline only matters when you assemble
 variants by hand. See
 :doc:`notebooks/howtos/11_sweep_via_copy` for the worked pattern.
 
+Inspecting the plan
+===================
+
+``scenario.plot()`` draws the walkable area with labelled
+distributions, exits, zones, and checkpoints. Two arguments turn it
+into a before/after view of a run:
+
+- ``show_journeys=True`` (the default) overlays each journey's route
+  as curved arrows in stage order. Both schema versions are read,
+  so current web-editor exports (``journeys_v2``) show routes too.
+- ``trajectories=`` takes a ``ScenarioResult`` (or a pedpy
+  ``TrajectoryData``) and draws the agent paths from a completed run
+  on top of the plan. Use ``show_trajectories=False`` to force it off.
+
+.. code-block:: python
+
+    result = run_scenario(scenario, seed=42)
+    scenario.plot(show_journeys=True, trajectories=result)
+
+See :doc:`notebooks/howtos/02_visualisation` for the full tour.
+
 ScenarioResult — the run output
 ================================
 
@@ -79,6 +100,9 @@ Two things to remember:
 
 - ``trajectory_dataframe()`` materializes the trajectory as a
   pandas DataFrame compatible with :doc:`pedpy <pedpy:index>`.
+- ``visualise()`` returns an interactive plotly animation of the run
+  — agents coloured by speed, with a play button and time slider.
+  Pass ``save_path="run.html"`` to write a self-contained file.
 - ``cleanup()`` deletes the temp sqlite. Call it when you are done,
   or wrap your run in a ``try / finally`` block. The file does not
   vanish on garbage collection.
