@@ -46,7 +46,7 @@ result.cleanup()
 
 To build a `Scenario` in pure Python — without going through a
 web-app export — see
-[`examples/howtos/08_build_from_scratch.ipynb`](examples/howtos/08_build_from_scratch.ipynb).
+[`examples/howtos/09_build_from_scratch.ipynb`](examples/howtos/09_build_from_scratch.ipynb).
 
 ### Quick CLI: run a ZIP and bundle the trajectory
 
@@ -83,7 +83,7 @@ trial.max_simulation_time = 60
 
 `run_sweep` does this for you per trial. The pattern only matters
 when you build variants manually (see
-`examples/howtos/10_sweep_via_copy.ipynb`).
+`examples/howtos/11_sweep_via_copy.ipynb`).
 
 ## Monte Carlo sweep
 
@@ -113,9 +113,9 @@ journeys that vary — use `run_sweep_from_factory` instead.
 
 For deeper coverage see the how-to notebooks:
 
-- [`04_sweep_basics`](examples/howtos/04_sweep_basics.ipynb) — axes / apply / paired conditions
-- [`09_sweep_save_load`](examples/howtos/09_sweep_save_load.ipynb) — `SweepResult.save` / `load`
-- [`10_sweep_via_copy`](examples/howtos/10_sweep_via_copy.ipynb) — factory sweeps and `Scenario.copy()`
+- [`05_sweep_basics`](examples/howtos/05_sweep_basics.ipynb) — axes / apply / paired conditions
+- [`10_sweep_save_load`](examples/howtos/10_sweep_save_load.ipynb) — `SweepResult.save` / `load`
+- [`11_sweep_via_copy`](examples/howtos/11_sweep_via_copy.ipynb) — factory sweeps and `Scenario.copy()`
 
 ## Command line
 

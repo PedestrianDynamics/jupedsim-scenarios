@@ -24,6 +24,7 @@ Inspecting a scenario
    :maxdepth: 1
 
    notebooks/howtos/01_inspect_scenario
+   notebooks/howtos/02_visualisation
 
 Changing agents
 ===============
@@ -31,8 +32,8 @@ Changing agents
 .. toctree::
    :maxdepth: 1
 
-   notebooks/howtos/02_change_agent_count
-   notebooks/howtos/03_change_agent_speed
+   notebooks/howtos/03_change_agent_count
+   notebooks/howtos/04_change_agent_speed
 
 Routing and zones
 =================
@@ -40,8 +41,8 @@ Routing and zones
 .. toctree::
    :maxdepth: 1
 
-   notebooks/howtos/05_set_zone_speed_factor
-   notebooks/howtos/06_set_checkpoint_waiting_time
+   notebooks/howtos/06_set_zone_speed_factor
+   notebooks/howtos/07_set_checkpoint_waiting_time
 
 Parameter sweeps
 ================
@@ -49,9 +50,9 @@ Parameter sweeps
 .. toctree::
    :maxdepth: 1
 
-   notebooks/howtos/04_sweep_basics
-   notebooks/howtos/09_sweep_save_load
-   notebooks/howtos/10_sweep_via_copy
+   notebooks/howtos/05_sweep_basics
+   notebooks/howtos/10_sweep_save_load
+   notebooks/howtos/11_sweep_via_copy
 
 Authoring without the web editor
 ================================
@@ -59,7 +60,7 @@ Authoring without the web editor
 .. toctree::
    :maxdepth: 1
 
-   notebooks/howtos/08_build_from_scratch
+   notebooks/howtos/09_build_from_scratch
 
 Interactive use
 ===============
@@ -67,4 +68,4 @@ Interactive use
 .. toctree::
    :maxdepth: 1
 
-   notebooks/howtos/07_interactive_runner
+   notebooks/howtos/08_interactive_runner
