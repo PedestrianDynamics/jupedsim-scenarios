@@ -17,17 +17,17 @@ Pick the smallest tool that fits your goal.
      - :doc:`notebooks/bottleneck_tutorial`
    * - Sweep one or more numeric parameters
      - :py:func:`~jupedsim_scenarios.run_sweep`
-     - :doc:`notebooks/howtos/04_sweep_basics`
+     - :doc:`notebooks/howtos/05_sweep_basics`
    * - Sweep where geometry or journeys change per trial
      - :py:func:`~jupedsim_scenarios.run_sweep_from_factory`
-     - :doc:`notebooks/howtos/10_sweep_via_copy`
+     - :doc:`notebooks/howtos/11_sweep_via_copy`
    * - Save a sweep and re-open it in another session
      - :py:meth:`SweepResult.save <jupedsim_scenarios.SweepResult.save>`
        / :py:meth:`SweepResult.load <jupedsim_scenarios.SweepResult.load>`
-     - :doc:`notebooks/howtos/09_sweep_save_load`
+     - :doc:`notebooks/howtos/10_sweep_save_load`
    * - Build a scenario in pure Python (no web editor)
      - :py:class:`~jupedsim_scenarios.Scenario` constructor
-     - :doc:`notebooks/howtos/08_build_from_scratch`
+     - :doc:`notebooks/howtos/09_build_from_scratch`
    * - Drive a single run from a shell or CI pipeline
      - ``jps-scenarios run`` CLI
      - :doc:`cli`

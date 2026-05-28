@@ -68,7 +68,7 @@ Can I resume a sweep that was interrupted?
 ==========================================
 
 Yes — sweeps can be saved and re-loaded. See
-:doc:`notebooks/howtos/09_sweep_save_load`. The save format
+:doc:`notebooks/howtos/10_sweep_save_load`. The save format
 includes per-trial trajectories so analysis works offline.
 
 ``DeprecationWarning: v0 / v0_std / v0_distribution``
@@ -116,10 +116,10 @@ extras and run the offending notebook locally first:
 
     pip install -r docs/requirements.txt
     jupyter nbconvert --to notebook --execute \
-        examples/howtos/04_sweep_basics.ipynb --output /tmp/out.ipynb
+        examples/howtos/05_sweep_basics.ipynb --output /tmp/out.ipynb
 
 Or, with the ``[dev]`` extras installed:
 
 .. code-block:: bash
 
-    pytest --nbmake examples/howtos/04_sweep_basics.ipynb
+    pytest --nbmake examples/howtos/05_sweep_basics.ipynb

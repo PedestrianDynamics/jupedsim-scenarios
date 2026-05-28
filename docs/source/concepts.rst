@@ -64,7 +64,7 @@ first and edit the clone:
 :py:func:`~jupedsim_scenarios.run_sweep` does this for you per
 trial. The copy-first discipline only matters when you assemble
 variants by hand. See
-:doc:`notebooks/howtos/10_sweep_via_copy` for the worked pattern.
+:doc:`notebooks/howtos/11_sweep_via_copy` for the worked pattern.
 
 ScenarioResult — the run output
 ================================
@@ -107,7 +107,7 @@ you save, re-load, and analyze across sessions.
   studies that you want to analyze separately.
 - ``cleanup()`` removes all per-trial temp files.
 
-See :doc:`notebooks/howtos/09_sweep_save_load` for the
+See :doc:`notebooks/howtos/10_sweep_save_load` for the
 save/reload pattern.
 
 Where each object lives
