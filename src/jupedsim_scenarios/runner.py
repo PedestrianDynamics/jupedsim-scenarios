@@ -608,7 +608,8 @@ class Scenario:
                 "show_trajectories=True requires a trajectories= argument"
             )
 
-        draw_journeys = show_journeys and bool(self.journeys)
+        journey_routes = self._journey_routes() if show_journeys else []
+        draw_journeys = bool(journey_routes)
 
         # Legend
         from matplotlib.lines import Line2D
@@ -628,7 +629,7 @@ class Scenario:
             ax.legend(handles=handles, loc="best", frameon=False, fontsize=9)
 
         if draw_journeys:
-            self._plot_journeys(ax)
+            self._plot_journeys(ax, journey_routes)
 
         if trajectories is not None and (
             show_trajectories or show_trajectories is None
@@ -668,11 +669,30 @@ class Scenario:
                 centroids[eid] = (cx, cy)
         return centroids
 
-    def _plot_journeys(self, ax) -> None:
+    def _journey_routes(self) -> list[list[str]]:
+        """Stage-id sequences for each journey, across both schema versions.
+
+        Old exports keep routes under ``journeys`` (key ``stages``); newer
+        ones under ``journeys_v2`` (key ``sequence``). The runtime routes via
+        ``journeys_v2`` (see ``simulation_init._create_journeys_v2``), so the
+        plan plot has to honour both or it silently shows no journeys for
+        current exports.
+        """
+        routes: list[list[str]] = []
+        for journey in self.raw.get("journeys", []) or []:
+            sequence = journey.get("stages") or []
+            if sequence:
+                routes.append(list(sequence))
+        for journey in self.raw.get("journeys_v2", []) or []:
+            sequence = journey.get("sequence") or []
+            if sequence:
+                routes.append(list(sequence))
+        return routes
+
+    def _plot_journeys(self, ax, routes) -> None:
         centroids = self._element_centroids()
-        for journey in self.journeys:
-            sequence = [s for s in journey.get("stages", []) if s in centroids]
-            points = [centroids[s] for s in sequence]
+        for sequence in routes:
+            points = [centroids[s] for s in sequence if s in centroids]
             for (x0, y0), (x1, y1) in zip(points, points[1:], strict=False):
                 ax.annotate(
                     "",
