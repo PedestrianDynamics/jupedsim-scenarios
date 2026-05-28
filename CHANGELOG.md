@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.4.1] — 2026-05-28
+
+### Fixed
+
+- **Docs build:** added `plotly` to `docs/requirements.txt`. The docs
+  workflow installs that file rather than the `viz` extra, so executing
+  `02_visualisation.ipynb` (which calls `ScenarioResult.visualise()`)
+  raised an `ImportError` and broke the Sphinx build.
+
+### Added
+
+- **README:** visualisation section covering the `viz` extra,
+  `Scenario.plot()`, and `ScenarioResult.visualise()`.
+
 ## [0.6.4] — 2026-05-28
 
 Visualisation: an interactive run animation and a plan plot that overlays
