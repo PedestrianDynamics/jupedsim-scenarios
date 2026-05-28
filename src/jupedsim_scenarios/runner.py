@@ -717,8 +717,16 @@ class Scenario:
             else trajectories
         )
         # walkable_area=None: the plan geometry is already drawn above, so we
-        # only want pedpy to add the agent paths on top of it.
-        pedpy.plot_trajectories(traj=traj, walkable_area=None, axes=ax)
+        # only want pedpy to add the agent paths on top of it. Thin, faint
+        # lines keep dense bundles legible over the labelled plan (pedpy
+        # defaults to width 1.0 / alpha 1.0, which crowds the figure).
+        pedpy.plot_trajectories(
+            traj=traj,
+            walkable_area=None,
+            axes=ax,
+            traj_width=0.4,
+            traj_alpha=0.3,
+        )
 
     # -- resolver helpers (private) -----------------------------------------
 
