@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.4] — 2026-05-28
+
+Visualisation: an interactive run animation and a plan plot that overlays
+journeys and agent paths.
+
+### Added
+
+- **`ScenarioResult.visualise()`** — interactive plotly playback of a run
+  (agents coloured by speed, with a play button and time slider). Reads
+  the run's SQLite directly, subsamples long runs automatically, and
+  writes a self-contained file via `save_path="run.html"`.
+- **`Scenario.plot()` overlays** — `show_journeys=True` (default) draws
+  each journey's route as curved arrows; `trajectories=` overlays the
+  agent paths from a `ScenarioResult` (or pedpy `TrajectoryData`) on the
+  plan.
+- **`examples/howtos/02_visualisation.ipynb`** how-to and a bundled
+  `examples/assets/journeys.zip` scenario that exercises both overlays.
+
+### Changed
+
+- **Dependencies:** `plotly` added to the `viz` optional-dependency group.
+- **How-tos renumbered** `02`–`10` → `03`–`11` to seat the new
+  `02_visualisation` next to `01_inspect_scenario`; doc references updated.
+- **Docs:** concepts page now documents the plot overlays and
+  `visualise()`.
+- **`examples/run_zip.py`:** seed defaults to `None`.
+
+### Fixed
+
+- **`Scenario.plot()` now draws `journeys_v2` routes.** Current web-editor
+  exports store routes under `journeys_v2`/`sequence` (which the runtime
+  already routes through); the plot only read the legacy
+  `journeys`/`stages` shape and silently showed no journeys.
+
 ## [0.6.3] — 2026-05-27
 
 Docs and examples polish, plus a friendlier placement-error message.
