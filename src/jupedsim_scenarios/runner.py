@@ -60,6 +60,11 @@ from .simulation_init import (
     initialize_simulation_from_json,
 )
 
+# Target frame count for ScenarioResult.visualise() when every_nth_frame is
+# left to auto: long runs are subsampled so the plotly animation stays
+# responsive, short runs play every frame.
+_TARGET_ANIMATION_FRAMES = 100
+
 # ---------------------------------------------------------------------------
 # Model factory
 # ---------------------------------------------------------------------------
@@ -512,8 +517,24 @@ class Scenario:
             lines.append(f"    {dist_id}: {n} agents{tag}")
         return "\n".join(lines)
 
-    def plot(self, ax=None):
+    def plot(self, ax=None, *, show_journeys: bool = True,
+             trajectories=None, show_trajectories: bool | None = None):
         """Plot the scenario geometry with labeled distributions, exits, zones, and checkpoints.
+
+        When ``show_journeys`` is true (default) and the scenario defines
+        journeys, curved arrows connect the elements of each journey in route
+        order.
+
+        Pass ``trajectories`` — a :class:`ScenarioResult` from a completed run,
+        or a ``pedpy.TrajectoryData`` — to overlay the agent paths on the
+        geometry via :func:`pedpy.plot_trajectories`. A single call then shows
+        the plan (exits, journeys) and what the agents actually did::
+
+            result = run_scenario(scenario, seed=42)
+            scenario.plot(trajectories=result)
+
+        ``show_trajectories`` forces the overlay on/off; left at ``None`` it is
+        drawn whenever ``trajectories`` is given.
 
         Returns the matplotlib Axes so callers can further customise the figure.
         """
@@ -582,7 +603,15 @@ class Scenario:
             _plot_element(s["coordinates"], palette["checkpoint"],
                           f"C{i}\n(w={wt}s)", alpha=0.3)
 
+        if show_trajectories and trajectories is None:
+            raise ValueError(
+                "show_trajectories=True requires a trajectories= argument"
+            )
+
+        draw_journeys = show_journeys and bool(self.journeys)
+
         # Legend
+        from matplotlib.lines import Line2D
         from matplotlib.patches import Patch
         handles = []
         if self.distributions:
@@ -593,8 +622,18 @@ class Scenario:
             handles.append(Patch(facecolor=palette["zone"], alpha=0.25, label="Zone"))
         if self.stages:
             handles.append(Patch(facecolor=palette["checkpoint"], alpha=0.3, label="Checkpoint"))
+        if draw_journeys:
+            handles.append(Line2D([], [], color="#7C3AED", linewidth=1.5, label="Journey"))
         if handles:
             ax.legend(handles=handles, loc="best", frameon=False, fontsize=9)
+
+        if draw_journeys:
+            self._plot_journeys(ax)
+
+        if trajectories is not None and (
+            show_trajectories or show_trajectories is None
+        ):
+            self._plot_trajectories(ax, trajectories)
 
         ax.set_aspect("equal")
         ax.set_xlabel("x [m]")
@@ -604,6 +643,62 @@ class Scenario:
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         return ax
+
+    def _element_centroids(self) -> dict[str, tuple[float, float]]:
+        """Map every journey-addressable element id to its polygon centroid.
+
+        Journey stage ids carry a ``jps-{collection}_{n}`` prefix, so a flat
+        lookup across all collections resolves a route sequence to points.
+        """
+        centroids: dict[str, tuple[float, float]] = {}
+        collections = (
+            self.raw.get("distributions", {}),
+            self.raw.get("exits", {}),
+            self.raw.get("zones", {}),
+            self.raw.get("checkpoints", {}),
+        )
+        for bucket in collections:
+            for eid, element in bucket.items():
+                coords = element.get("coordinates")
+                if not coords:
+                    continue
+                pts = coords[:-1] or coords
+                cx = sum(p[0] for p in pts) / len(pts)
+                cy = sum(p[1] for p in pts) / len(pts)
+                centroids[eid] = (cx, cy)
+        return centroids
+
+    def _plot_journeys(self, ax) -> None:
+        centroids = self._element_centroids()
+        for journey in self.journeys:
+            sequence = [s for s in journey.get("stages", []) if s in centroids]
+            points = [centroids[s] for s in sequence]
+            for (x0, y0), (x1, y1) in zip(points, points[1:], strict=False):
+                ax.annotate(
+                    "",
+                    xy=(x1, y1),
+                    xytext=(x0, y0),
+                    arrowprops=dict(
+                        arrowstyle="-|>",
+                        color="#7C3AED",
+                        connectionstyle="arc3,rad=0.2",
+                        linewidth=1.5,
+                        alpha=0.8,
+                    ),
+                    zorder=4,
+                )
+
+    def _plot_trajectories(self, ax, trajectories) -> None:
+        import pedpy
+
+        traj = (
+            trajectories.as_pedpy_trajectory()
+            if hasattr(trajectories, "as_pedpy_trajectory")
+            else trajectories
+        )
+        # walkable_area=None: the plan geometry is already drawn above, so we
+        # only want pedpy to add the agent paths on top of it.
+        pedpy.plot_trajectories(traj=traj, walkable_area=None, axes=ax)
 
     # -- resolver helpers (private) -----------------------------------------
 
@@ -1100,6 +1195,70 @@ class ScenarioResult:
             data=df[["id", "frame", "x", "y"]],
             frame_rate=self.frame_rate,
         )
+
+    def visualise(
+        self,
+        *,
+        every_nth_frame: int | None = None,
+        width: int = 800,
+        height: int = 800,
+        radius: float = 0.2,
+        title_note: str = "",
+        save_path: str | pathlib.Path | None = None,
+    ):
+        """Interactive plotly playback of the trajectory.
+
+        Thin wrapper around jupedsim's own notebook animation
+        (:func:`jupedsim.internal.notebook_utils.animate`): agents are drawn
+        as circles coloured by speed, with orientation arrows, a play button
+        and a time slider. Returns a ``plotly.graph_objects.Figure`` that
+        renders inline in Jupyter with no extra steps — just
+        ``result.visualise()`` as the last line of a cell.
+
+        Trajectory, frame rate and geometry are read straight from the run's
+        SQLite file (which carries the orientation columns this animation
+        needs). ``radius`` is the drawn agent radius in metres.
+
+        ``every_nth_frame`` subsamples frames so long runs stay light. Left at
+        ``None`` (the default) it is chosen automatically so the animation
+        lands near :data:`_TARGET_ANIMATION_FRAMES` frames: short runs play
+        every frame, huge runs are thinned to stay responsive. Pass an
+        explicit positive integer to override.
+
+        If ``save_path`` is given the figure is written to disk: ``.html``
+        produces a self-contained, interactive page; any other suffix is
+        passed to plotly's static image export.
+        """
+        from jupedsim.internal.notebook_utils import animate, read_sqlite_file
+
+        if not self.sqlite_file or not os.path.exists(self.sqlite_file):
+            raise FileNotFoundError("No trajectory SQLite file available")
+
+        traj, area = read_sqlite_file(self.sqlite_file)
+
+        if every_nth_frame is None:
+            n_frames = int(traj.data["frame"].nunique())
+            every_nth_frame = max(1, -(-n_frames // _TARGET_ANIMATION_FRAMES))
+        elif every_nth_frame <= 0:
+            raise ValueError("every_nth_frame must be a positive integer")
+
+        fig = animate(
+            traj,
+            area,
+            every_nth_frame=every_nth_frame,
+            width=width,
+            height=height,
+            radius=radius,
+            title_note=title_note,
+        )
+
+        if save_path is not None:
+            save_path = pathlib.Path(save_path)
+            if save_path.suffix.lower() == ".html":
+                fig.write_html(str(save_path))
+            else:
+                fig.write_image(str(save_path))
+        return fig
 
     def cleanup(self) -> int:
         """Delete the temporary SQLite trajectory file.
