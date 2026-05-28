@@ -612,9 +612,10 @@ class Scenario:
         draw_journeys = bool(journey_routes)
 
         # Legend
+        from matplotlib.artist import Artist
         from matplotlib.lines import Line2D
         from matplotlib.patches import Patch
-        handles = []
+        handles: list[Artist] = []
         if self.distributions:
             handles.append(Patch(facecolor=palette["distribution"], alpha=0.35, label="Distribution"))
         if self.exits:
