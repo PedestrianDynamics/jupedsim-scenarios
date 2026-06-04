@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.4.2] — 2026-06-04
+
+### Fixed
+
+- **`strict_spawning` opt-in restored.** Both distribution-parameter
+  builders (`_initialize_with_fallback` and `_process_distributions`)
+  whitelist keys explicitly and silently dropped `strict_spawning`, so the
+  flow-spawn deferral always behaved leniently regardless of the setting.
+  The key now survives processing, so a blocked placement aborts the run
+  when `strict_spawning` is enabled.
+
 ## [0.6.4.1] — 2026-05-28
 
 ### Fixed
