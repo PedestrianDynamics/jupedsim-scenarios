@@ -969,6 +969,7 @@ def _initialize_with_fallback(
                         "use_flow_spawning": params.get("use_flow_spawning", False),
                         "flow_start_time": params.get("flow_start_time", 0),
                         "flow_end_time": params.get("flow_end_time", 10),
+                        "strict_spawning": params.get("strict_spawning", False),
                         "use_premovement": params.get("use_premovement", False),
                         "premovement_distribution": params.get(
                             "premovement_distribution", "gamma"
@@ -1623,6 +1624,7 @@ def _process_distributions(
             "use_flow_spawning": params.get("use_flow_spawning", False),
             "flow_start_time": params.get("flow_start_time", 0),
             "flow_end_time": params.get("flow_end_time", 10),
+            "strict_spawning": params.get("strict_spawning", False),
             "use_premovement": params.get("use_premovement", False),
             "premovement_distribution": params.get("premovement_distribution", "gamma"),
             "premovement_param_a": params.get("premovement_param_a", None),
