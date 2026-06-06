@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.4.3] — 2026-06-06
+
+### Fixed
+
+- **Docs build:** notebooks now call pedpy's jupedsim-sqlite loaders with
+  the `trajectory_file=` keyword. pedpy 1.5.0 made
+  `load_trajectory_from_jupedsim_sqlite` and
+  `load_walkable_area_from_jupedsim_sqlite` keyword-only, so the unpinned
+  upgrade broke notebook execution and the Sphinx build during the
+  `v0.6.4.2` release. `docs/requirements.txt` now caps `pedpy~=1.5` to keep
+  a future breaking release off the tagged build path.
+
 ## [0.6.4.2] — 2026-06-04
 
 ### Fixed

@@ -10,7 +10,9 @@ sphinx-argparse~=0.5
 
 # Runtime deps required to execute the tutorial notebook at build time.
 jupedsim-scenarios
-pedpy
+# Cap pedpy to the 1.5 line: 1.5.0 made the jupedsim-sqlite loaders
+# keyword-only, and an unpinned upgrade silently broke the tagged docs build.
+pedpy~=1.5
 shapely
 numpy
 pandas

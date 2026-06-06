@@ -103,7 +103,7 @@ plugs straight into pedpy's loaders and plotters.
 code("""
 from pedpy import load_trajectory_from_jupedsim_sqlite, WalkableArea, plot_trajectories
 
-traj = load_trajectory_from_jupedsim_sqlite(Path(result.sqlite_file))
+traj = load_trajectory_from_jupedsim_sqlite(trajectory_file=Path(result.sqlite_file))
 walkable = WalkableArea(result.walkable_polygon)
 
 fig, ax = plt.subplots(figsize=(9, 4))
@@ -209,7 +209,7 @@ code("""
 fig, axes = plt.subplots(1, len(MODELS), figsize=(15, 4), sharey=True)
 for ax, model in zip(axes, MODELS):
     trial = next(t for t in sweep_m.trials if t.axis_values["model"] == model)
-    traj = load_trajectory_from_jupedsim_sqlite(Path(trial.result.sqlite_file))
+    traj = load_trajectory_from_jupedsim_sqlite(trajectory_file=Path(trial.result.sqlite_file))
     walkable = WalkableArea(trial.result.walkable_polygon)
     plot_trajectories(traj=traj, walkable_area=walkable, axes=ax)
     ax.set_title(f"{model.replace('Model', '')}\\n"
