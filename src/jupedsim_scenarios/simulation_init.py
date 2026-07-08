@@ -1345,6 +1345,9 @@ def _initialize_with_fallback(
         "has_premovement": has_premovement,
         "premovement_times": premovement_times,
         "agent_wait_info": fallback_agent_wait_info,
+        # Fallback path routes every agent to its nearest exit via direct
+        # steering, so there are no v2 journeys to attribute.
+        "agent_journeys": {},
         "direct_steering_info": direct_steering_info,
         "global_ds_journey_id": global_ds_journey_id,
         "global_ds_stage_id": global_ds_stage_id,
@@ -1759,6 +1762,12 @@ def _add_agents(
     agent_radii = {}
     current_agent_id = 0
     agent_wait_info = {}
+    # agent_id -> original v2 journey id it was assigned at spawn (the weighted
+    # draw across a distribution's journey_weights), or None for nearest-exit
+    # direct-steering agents that have no v2 journey. Recorded here because the
+    # trajectory only stores positions, so the per-agent journey is otherwise
+    # unrecoverable downstream (dot coloring, journey-aware counts).
+    agent_journeys: dict[int, str | None] = {}
 
     # Build exit_geometries keyed by exit_id for nearest-exit lookup
     exit_geometries = {}
@@ -2061,6 +2070,10 @@ def _add_agents(
 
                                 agent_id = simulation.add_agent(agent_params)
                                 agent_radii[agent_id] = agent_radius
+                                # journey_key is the original v2 journey id even
+                                # when direct steering overrides the compiled
+                                # journey object below — record the intended one.
+                                agent_journeys[agent_id] = journey_key
 
                                 # Store premovement time if enabled
                                 if (
@@ -2155,6 +2168,8 @@ def _add_agents(
 
                     agent_id = simulation.add_agent(agent_params)
                     agent_radii[agent_id] = agent_radius
+                    # Nearest-exit direct steering: no v2 journey to attribute.
+                    agent_journeys[agent_id] = None
 
                     # Build DS wait info — chain through checkpoints (if any) then exit.
                     base_seed = seed + current_agent_id * 9973
@@ -2212,6 +2227,7 @@ def _add_agents(
         "has_premovement": has_premovement,
         "premovement_times": premovement_times,
         "agent_wait_info": agent_wait_info,
+        "agent_journeys": agent_journeys,
         "transitions": [],
         "waypoint_routing": {},
         "global_ds_journey_id": global_ds_journey_id,
