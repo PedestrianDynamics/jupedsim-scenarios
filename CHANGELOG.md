@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.4.4] — 2026-07-08
+
+### Added
+
+- **Per-agent journey attribution.** `spawning_info` now carries an
+  `agent_journeys` map (`agent_id -> original v2 journey id`, or `None` for
+  nearest-exit direct-steering agents), recorded at spawn in `_add_agents`.
+  The trajectory only stores positions, so the journey each agent was assigned
+  by the weighted `journey_weights` draw was previously unrecoverable
+  downstream; consumers can now colour dots and count by the actual journey.
+  Additive: existing `spawning_info` readers are unaffected. Flow-spawned
+  agents (added by the caller mid-run) are not included; the caller records
+  those.
+
 ### CI
 
 - **Type-check survives numpy 2.5.** numpy 2.5.1's shipped stubs use PEP 695
