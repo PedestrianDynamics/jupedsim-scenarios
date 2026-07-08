@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### CI
+
+- **Type-check survives numpy 2.5.** numpy 2.5.1's shipped stubs use PEP 695
+  `type` statements, which `mypy` rejects under `python_version = 3.11` and
+  aborts the whole run on. A mypy override now skips following numpy (stubs
+  included), so the unpinned CI upgrade no longer red-lights every PR. No
+  runtime or packaging change.
+
 ## [0.6.4.3] — 2026-06-06
 
 ### Fixed
