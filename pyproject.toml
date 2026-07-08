@@ -74,6 +74,15 @@ ignore_missing_imports = true   # jupedsim, joblib, pandas: no stubs
 warn_return_any = false
 exclude = ["tests/", "build/", "docs/"]
 
+# numpy 2.5's shipped stubs use PEP 695 `type` statements, which mypy rejects
+# under python_version = 3.11 (aborting the whole run before it reaches our
+# code). We don't type-check against numpy's internals, so skip following it —
+# `follow_imports_for_stubs` is required for the skip to cover the .pyi stubs.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
