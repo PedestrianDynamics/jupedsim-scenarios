@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.4.5] — 2026-07-20
+
+### Added
+
+- **WarpDriver model tuning via `sim_params`.** The `WarpDriverModel`
+  builder previously discarded `sim_params`, so the model always ran with
+  upstream defaults and agent radius was the only lever. The six
+  constructor knobs are now forwarded as `wd_`-prefixed keys
+  (`wd_time_horizon`, `wd_step_size`, `wd_sigma`, `wd_time_uncertainty`,
+  `wd_velocity_uncertainty_x`, `wd_velocity_uncertainty_y`), accepted by
+  `set_model_params()` and sweepable via `run_sweep`. Defaults match
+  jupedsim 1.4.2, so existing scenarios behave identically. (#72)
+
+### Docs
+
+- **"Coming from vanilla JuPedSim" tutorial.** New how-to notebook
+  (`examples/howtos/12_from_vanilla_jupedsim.ipynb`) running the same
+  bottleneck study twice — ~45 lines of vanilla `jupedsim` vs ~10 lines
+  here on identical geometry — plus a parameters × seeds `run_sweep`
+  payoff. Linked from the README and the docs how-to index. (#71)
+
 ## [0.6.4.4] — 2026-07-08
 
 ### Added
