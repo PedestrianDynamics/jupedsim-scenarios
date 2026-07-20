@@ -48,6 +48,11 @@ To build a `Scenario` in pure Python — without going through a
 web-app export — see
 [`examples/howtos/09_build_from_scratch.ipynb`](examples/howtos/09_build_from_scratch.ipynb).
 
+Already writing vanilla `jupedsim` code by hand? See
+[`examples/howtos/12_from_vanilla_jupedsim.ipynb`](examples/howtos/12_from_vanilla_jupedsim.ipynb):
+the same bottleneck study in ~45 lines of vanilla JuPedSim vs. ~10
+lines here, plus a parameters × seeds sweep in one call.
+
 ### Quick CLI: run a ZIP and bundle the trajectory
 
 [`examples/run_zip.py`](examples/run_zip.py) loads a scenario ZIP,

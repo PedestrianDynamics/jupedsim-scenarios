@@ -17,6 +17,14 @@ Start here
 
    notebooks/howtos/00_quickstart
 
+Coming from vanilla JuPedSim
+============================
+
+.. toctree::
+   :maxdepth: 1
+
+   notebooks/howtos/12_from_vanilla_jupedsim
+
 Inspecting a scenario
 =====================
 
