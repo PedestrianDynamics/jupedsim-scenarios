@@ -79,7 +79,14 @@ _MODEL_BUILDERS = {
         range_neighbor_repulsion=p.get("range_neighbor_repulsion", 0.1),
     ),
     "CollisionFreeSpeedModelV3": lambda _: jps.CollisionFreeSpeedModelV3(),
-    "WarpDriverModel": lambda _: jps.WarpDriverModel(),
+    "WarpDriverModel": lambda p: jps.WarpDriverModel(
+        time_horizon=p.get("wd_time_horizon", 2.0),
+        step_size=p.get("wd_step_size", 0.5),
+        sigma=p.get("wd_sigma", 0.3),
+        time_uncertainty=p.get("wd_time_uncertainty", 0.5),
+        velocity_uncertainty_x=p.get("wd_velocity_uncertainty_x", 0.2),
+        velocity_uncertainty_y=p.get("wd_velocity_uncertainty_y", 0.2),
+    ),
       "AnticipationVelocityModel": lambda _: jps.AnticipationVelocityModel(
         #strength_neighbor_repulsion=p.get("strength_neighbor_repulsion", 2.6),
         #range_neighbor_repulsion=p.get("range_neighbor_repulsion", 0.1),
@@ -312,6 +319,9 @@ _MODEL_PARAM_KEYS = frozenset({
     "gcfm_max_neighbor_repulsion_force", "gcfm_max_geometry_repulsion_force",
     "sfm_body_force", "sfm_friction",
     "anticipation_time",
+    "wd_time_horizon", "wd_step_size", "wd_sigma",
+    "wd_time_uncertainty", "wd_velocity_uncertainty_x",
+    "wd_velocity_uncertainty_y",
 })
 
 
