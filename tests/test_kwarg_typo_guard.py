@@ -74,12 +74,15 @@ def test_set_model_params_accepts_known_kwargs_across_models():
 def test_build_model_forwards_warpdriver_params():
     # wd_* keys must reach the jps.WarpDriverModel constructor instead of
     # being dropped by a builder that ignores sim_params.
+    import jupedsim as jps
+
     from jupedsim_scenarios.runner import _build_model
 
     model = _build_model("WarpDriverModel", {"wd_sigma": 0.5, "wd_time_horizon": 3.0})
     assert model.sigma == 0.5
     assert model.time_horizon == 3.0
-    assert model.step_size == 0.5  # untouched keys keep upstream defaults
+    # Untouched keys keep upstream defaults, whatever jupedsim ships.
+    assert model.step_size == jps.WarpDriverModel().step_size
 
 
 def test_set_model_params_unknown_raises():
