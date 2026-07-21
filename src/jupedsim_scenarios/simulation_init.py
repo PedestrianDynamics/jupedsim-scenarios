@@ -218,6 +218,18 @@ def _get_distribution_percentage(params):
     return max(1, min(100, percentage))
 
 
+def _speed_param(params: dict, canonical: str, legacy: str, default: Any) -> Any:
+    """Read a speed-family param preferring the canonical name (#73).
+
+    An explicit JSON ``null`` counts as "not provided" for either
+    spelling — it must not shadow a valid value under the other name.
+    """
+    value = params.get(canonical)
+    if value is None:
+        value = params.get(legacy)
+    return default if value is None else value
+
+
 def _sample_agent_values(params, n_agents, rng):
     """Sample per-agent radius and desired-speed values.
 
@@ -817,8 +829,8 @@ def _initialize_with_fallback(
 
                 if isinstance(params, dict):
                     default_agent_radius = params.get("radius", default_agent_radius)
-                    default_v0 = params.get(
-                        "desired_speed", params.get("v0", default_v0)
+                    default_v0 = float(
+                        _speed_param(params, "desired_speed", "v0", default_v0)
                     )
                     default_n_agents = params.get("number", default_n_agents)
                     break
@@ -964,7 +976,7 @@ def _initialize_with_fallback(
                         "number": params.get("number", default_n_agents),
                         "radius": params.get("radius", default_agent_radius),
                         # Canonical desired_speed* first; legacy v0* fallback (#73).
-                        "v0": params.get("desired_speed", params.get("v0", default_v0)),
+                        "v0": _speed_param(params, "desired_speed", "v0", default_v0),
                         "distribution_mode": params.get(
                             "distribution_mode", "by_number"
                         ),
@@ -984,12 +996,14 @@ def _initialize_with_fallback(
                             "radius_distribution", "constant"
                         ),
                         "radius_std": params.get("radius_std", None),
-                        "v0_distribution": params.get(
+                        "v0_distribution": _speed_param(
+                            params,
                             "desired_speed_distribution",
-                            params.get("v0_distribution", "constant"),
+                            "v0_distribution",
+                            "constant",
                         ),
-                        "v0_std": params.get(
-                            "desired_speed_std", params.get("v0_std", None)
+                        "v0_std": _speed_param(
+                            params, "desired_speed_std", "v0_std", None
                         ),
                     }
 
@@ -1632,7 +1646,7 @@ def _process_distributions(
             "number": params.get("number", 10),
             "radius": params.get("radius", 0.2),
             # Canonical desired_speed* first; legacy v0* fallback (#73).
-            "v0": params.get("desired_speed", params.get("v0", 1.2)),
+            "v0": _speed_param(params, "desired_speed", "v0", 1.2),
             "use_flow_spawning": params.get("use_flow_spawning", False),
             "flow_start_time": params.get("flow_start_time", 0),
             "flow_end_time": params.get("flow_end_time", 10),
@@ -1644,10 +1658,10 @@ def _process_distributions(
             "premovement_seed": params.get("premovement_seed", None),
             "radius_distribution": params.get("radius_distribution", "constant"),
             "radius_std": params.get("radius_std", None),
-            "v0_distribution": params.get(
-                "desired_speed_distribution", params.get("v0_distribution", "constant")
+            "v0_distribution": _speed_param(
+                params, "desired_speed_distribution", "v0_distribution", "constant"
             ),
-            "v0_std": params.get("desired_speed_std", params.get("v0_std", None)),
+            "v0_std": _speed_param(params, "desired_speed_std", "v0_std", None),
             "distribution_mode": params.get("distribution_mode", "by_number"),
             "percentage": params.get("percentage", None),
         }

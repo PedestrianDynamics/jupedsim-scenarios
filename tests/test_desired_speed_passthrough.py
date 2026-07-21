@@ -67,6 +67,24 @@ def test_modern_keys_win_over_legacy():
     assert reduced["v0"] == 0.6
 
 
+def test_explicit_null_does_not_shadow_legacy_keys():
+    # A JSON payload may carry "desired_speed": null next to a valid
+    # legacy v0 — null means "not provided", not "override with None".
+    reduced = _reduced(
+        {
+            "desired_speed": None,
+            "v0": 0.9,
+            "desired_speed_std": None,
+            "v0_std": 0.2,
+            "desired_speed_distribution": None,
+            "v0_distribution": "gaussian",
+        }
+    )
+    assert reduced["v0"] == 0.9
+    assert reduced["v0_std"] == 0.2
+    assert reduced["v0_distribution"] == "gaussian"
+
+
 def test_reduced_view_samples_gaussian_spread():
     reduced = _reduced(
         {
