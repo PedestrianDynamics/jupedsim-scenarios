@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.6] — 2026-07-21
+
+### Fixed
+
+- **`CollisionFreeSpeedModelV2` crashed on every run.** The model builder
+  passed `strength_neighbor_repulsion` / `range_neighbor_repulsion` to the
+  upstream V2 constructor, which takes no arguments in jupedsim 1.4.2 —
+  those params are per-agent (`CollisionFreeSpeedModelV2AgentParameters`,
+  populated in `simulation_init` from `sim_params`). The builder now
+  constructs the bare model; the same knobs still reach agents through
+  the per-agent path. A parametrized construct-every-builder test pins
+  the registry against upstream signature drift. (#75)
+
 ## [0.6.5] — 2026-07-21
 
 > Versioning note: from this release on the project follows strict
