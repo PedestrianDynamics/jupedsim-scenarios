@@ -961,7 +961,8 @@ def _initialize_with_fallback(
                     dist_params = {
                         "number": params.get("number", default_n_agents),
                         "radius": params.get("radius", default_agent_radius),
-                        "v0": params.get("v0", default_v0),
+                        # Canonical desired_speed* first; legacy v0* fallback (#73).
+                        "v0": params.get("desired_speed", params.get("v0", default_v0)),
                         "distribution_mode": params.get(
                             "distribution_mode", "by_number"
                         ),
@@ -981,8 +982,13 @@ def _initialize_with_fallback(
                             "radius_distribution", "constant"
                         ),
                         "radius_std": params.get("radius_std", None),
-                        "v0_distribution": params.get("v0_distribution", "constant"),
-                        "v0_std": params.get("v0_std", None),
+                        "v0_distribution": params.get(
+                            "desired_speed_distribution",
+                            params.get("v0_distribution", "constant"),
+                        ),
+                        "v0_std": params.get(
+                            "desired_speed_std", params.get("v0_std", None)
+                        ),
                     }
 
                     distribution_params.append(dist_params)
@@ -1623,7 +1629,8 @@ def _process_distributions(
         dist_params[dist_id] = {
             "number": params.get("number", 10),
             "radius": params.get("radius", 0.2),
-            "v0": params.get("v0", 1.2),
+            # Canonical desired_speed* first; legacy v0* fallback (#73).
+            "v0": params.get("desired_speed", params.get("v0", 1.2)),
             "use_flow_spawning": params.get("use_flow_spawning", False),
             "flow_start_time": params.get("flow_start_time", 0),
             "flow_end_time": params.get("flow_end_time", 10),
@@ -1635,8 +1642,10 @@ def _process_distributions(
             "premovement_seed": params.get("premovement_seed", None),
             "radius_distribution": params.get("radius_distribution", "constant"),
             "radius_std": params.get("radius_std", None),
-            "v0_distribution": params.get("v0_distribution", "constant"),
-            "v0_std": params.get("v0_std", None),
+            "v0_distribution": params.get(
+                "desired_speed_distribution", params.get("v0_distribution", "constant")
+            ),
+            "v0_std": params.get("desired_speed_std", params.get("v0_std", None)),
             "distribution_mode": params.get("distribution_mode", "by_number"),
             "percentage": params.get("percentage", None),
         }
