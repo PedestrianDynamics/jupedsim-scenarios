@@ -817,7 +817,9 @@ def _initialize_with_fallback(
 
                 if isinstance(params, dict):
                     default_agent_radius = params.get("radius", default_agent_radius)
-                    default_v0 = params.get("v0", default_v0)
+                    default_v0 = params.get(
+                        "desired_speed", params.get("v0", default_v0)
+                    )
                     default_n_agents = params.get("number", default_n_agents)
                     break
 
