@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.5] — 2026-07-21
+
+> Versioning note: from this release on the project follows strict
+> [SemVer](https://semver.org/) — three components, features bump MINOR,
+> fixes bump PATCH. The four-part `0.6.4.x` scheme is retired; `0.6.5`
+> orders above `0.6.4.5` under both SemVer and PEP 440.
+
+### Fixed
+
+- **`desired_speed` mean and spread silently dropped at spawn.** The
+  reduced distribution-parameter views in `simulation_init`
+  (`_process_distributions` and the flow-spawn builder) whitelisted only
+  legacy `v0`/`v0_std`/`v0_distribution` keys, while the public API
+  stores canonical `desired_speed*` names. Scenarios authored via
+  `add_distribution` (or loaded from modern JSON) spawned every agent at
+  the 1.2 m/s default with no Gaussian spread, on all spawn paths; the
+  `set_agent_params` compat mirror masked the bug for sweeps. Canonical
+  keys are now read first with legacy fallback. Same fix class as the
+  `strict_spawning` drop (#67). (#73, #74)
+
 ## [0.6.4.5] — 2026-07-20
 
 ### Added

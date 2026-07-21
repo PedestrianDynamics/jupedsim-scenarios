@@ -175,7 +175,7 @@ sphinx-build -b html docs/source docs/build/html
 
 ## Roadmap
 
-Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.6.4.5**.
+Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.6.5**.
 
 On the table for future releases:
 
