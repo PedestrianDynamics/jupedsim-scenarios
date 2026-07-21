@@ -74,10 +74,9 @@ _MODEL_BUILDERS = {
         strength_neighbor_repulsion=p.get("strength_neighbor_repulsion", 2.6),
         range_neighbor_repulsion=p.get("range_neighbor_repulsion", 0.1),
     ),
-    "CollisionFreeSpeedModelV2": lambda p: jps.CollisionFreeSpeedModelV2(
-        strength_neighbor_repulsion=p.get("strength_neighbor_repulsion", 2.6),
-        range_neighbor_repulsion=p.get("range_neighbor_repulsion", 0.1),
-    ),
+    # V2 takes its repulsion params per-agent (CollisionFreeSpeedModelV2AgentParameters,
+    # set in simulation_init), so the operational model itself takes no args.
+    "CollisionFreeSpeedModelV2": lambda _: jps.CollisionFreeSpeedModelV2(),
     "CollisionFreeSpeedModelV3": lambda _: jps.CollisionFreeSpeedModelV3(),
     "WarpDriverModel": lambda p: jps.WarpDriverModel(
         time_horizon=p.get("wd_time_horizon", 2.0),
