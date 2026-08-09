@@ -7,8 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.6.7] — 2026-08-09
+
 ### Fixed
 
+- **Waiting-stage targets were sampled from different regions on the first
+  hop vs. later hops.** The runtime picker floored target clearance at
+  `max(0.05, 0.8 · radius)` while the initial picker also includes
+  `reach_penetration` — 0.25 vs 0.16 m at the default radius. On a small
+  polygon the two could even take different code branches (eroded-polygon
+  sample vs. unbuffered fallback). The runtime picker now includes
+  `reach_penetration` too, so every hop samples the same region. (#80)
+- **Fallback first-hop targets are picked with the same rule as every
+  later hop.** Both fallback spawn sites assigned the first target with a
+  raw random interior point while the runtime uses the transit/waiting
+  rule (centroid for transit stages), so the same checkpoint was aimed at
+  differently depending on its position in the chain. (#76)
 - **Unused checkpoints silently rewrote routing for the whole population.**
   A scenario with `checkpoints` but no `journeys_v2` chained *every*
   checkpoint, in JSON insertion order, into the nearest exit — so a stage
@@ -32,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   insertion order, ending at the exit nearest each agent's spawn point.
   Spawn position deliberately does not reorder the checkpoints, so a given
   JSON always routes the same way. (#76)
+- Journey-less distributions on the `journeys_v2` path go straight to the
+  nearest exit by design. The checkpoint-chain filter there could never
+  match (`_add_stages` stamps no `stage_type`) and has been removed;
+  checkpoint chaining is solely the fallback initializer's job. No
+  behavior change. (#79)
+- The fallback (no `journeys_v2`) path assigns each agent the exit nearest
+  its spawn point, once, by straight-line distance. This is now accepted
+  as best-effort behavior: scenarios that care about exit choice should
+  define journeys. (#77, #81 — closed as won't-fix)
 
 ## [0.6.6] — 2026-07-21
 
