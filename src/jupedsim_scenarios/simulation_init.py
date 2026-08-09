@@ -2214,7 +2214,7 @@ def _add_agents(
                     nearest_exit_id = _find_nearest_exit(
                         pos, exit_geometries=exit_geometries
                     )
-                    path_choices = {}
+                    path_choices: dict[str, list[tuple[str, float]]] = {}
                     first_target_stage = nearest_exit_id
 
                     agent_radius = float(sampled_radii[idx])
