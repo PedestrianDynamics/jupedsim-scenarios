@@ -33,9 +33,13 @@ CHECKPOINT_CENTROID = (10.0, 2.5)
 
 
 def _scenario_with_checkpoint():
-    """Corridor fixture plus one inert checkpoint and no journeys, so
+    """Corridor fixture plus one speed-factor checkpoint and no journeys, so
     ``_build_fallback_checkpoint_chain`` makes the checkpoint the first hop
-    for every agent."""
+    for every agent.
+
+    The checkpoint has to carry behavior — an inert one is no longer chained
+    (#76). ``speed_factor`` keeps ``waiting_time`` at 0, so the stage is still
+    transit and the expected target is still the centroid."""
     pytest.importorskip("jupedsim")
     from jupedsim_scenarios import Scenario
 
@@ -45,7 +49,7 @@ def _scenario_with_checkpoint():
             "type": "polygon",
             "coordinates": CHECKPOINT_COORDS,
             "waiting_time": 0,
-            "speed_factor": 1,
+            "speed_factor": 0.5,
             "enable_throughput_throttling": False,
         }
     }
