@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- **Unused checkpoints silently rewrote routing for the whole population.**
+  A scenario with `checkpoints` but no `journeys_v2` chained *every*
+  checkpoint, in JSON insertion order, into the nearest exit — so a stage
+  drawn in the editor and never wired into a journey became a mandatory
+  waypoint for all agents. The chain now carries only checkpoints that do
+  something: `waiting_time > 0`, `speed_factor != 1`, or throttling with a
+  positive `max_throughput`. Inert checkpoints fall back to
+  straight-to-nearest-exit, and #8's `waiting_time` behavior is unchanged
+  and pinned by a regression test. On a 40 × 20 m hall (3 inert 0.49 m
+  checkpoints, 2 exits, no journeys) evacuation drops from 227.6 s to
+  23.1 s at 40 agents, exactly matching the same scenario authored with no
+  checkpoints at all. This is a value test, not a declared intent: a
+  checkpoint meant as a pure waypoint is indistinguishable from a forgotten
+  one in the current schema and is dropped too — express such a route as a
+  `journeys_v2` sequence. (#76)
+
+### Changed
+
+- The fallback chain's ordering semantics are now stated rather than
+  inherited: one chain shared by the whole population, in scenario JSON
+  insertion order, ending at the exit nearest each agent's spawn point.
+  Spawn position deliberately does not reorder the checkpoints, so a given
+  JSON always routes the same way. (#76)
+
 ## [0.6.6] — 2026-07-21
 
 ### Fixed

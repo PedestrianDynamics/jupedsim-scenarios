@@ -767,6 +767,31 @@ def _initialize_complete_config(
     )
 
 
+def _checkpoint_carries_behavior(info: dict[str, Any]) -> bool:
+    """Whether a checkpoint does anything beyond being a point in space.
+
+    A checkpoint carries behavior when it makes agents wait, changes their
+    speed, or throttles them. Throttling with a non-positive `max_throughput`
+    is a no-op at runtime (see the guard in the runner's throttle step), so it
+    does not count — but an *omitted* rate is not: the runtime reads
+    `max_throughput` with a default of 1.0 and throttles. This function uses
+    the same default, so the predicate agrees with what the runtime will do.
+
+    Takes an entry of the stage-config map the runtime is handed, so the
+    values tested here are the normalized ones that actually apply.
+
+    The fallback (no `journeys_v2`) path chains only behavior-carrying
+    checkpoints; see `_build_fallback_checkpoint_chain`.
+    """
+    if float(info.get("waiting_time", 0.0) or 0.0) > 0.0:
+        return True
+    if abs(_normalize_speed_factor(info.get("speed_factor", 1.0)) - 1.0) > 1e-9:
+        return True
+    return bool(info.get("enable_throughput_throttling", False)) and (
+        float(info.get("max_throughput", 1.0) or 0.0) > 0.0
+    )
+
+
 def _build_fallback_checkpoint_chain(
     ordered_checkpoint_ids: list[str], nearest_exit_id: str
 ) -> tuple[dict[str, list[tuple[str, float]]], str]:
@@ -775,9 +800,24 @@ def _build_fallback_checkpoint_chain(
     Used by the fallback (no `journeys_v2`) path to honor checkpoint
     `waiting_time` and `speed_factor` settings instead of sending every agent
     straight to the closest exit (the regression that caused
-    jupedsim-scenarios#8). The chain is deterministic — scenario JSON
-    insertion order — so agents in the same distribution take the same
-    route.
+    jupedsim-scenarios#8).
+
+    Ordering semantics: a single chain shared by the whole population, in
+    scenario JSON insertion order, terminating at the exit nearest each
+    agent's spawn point. Spawn position does not influence the order of the
+    checkpoints themselves — that is intended, so agents in the same
+    distribution take the same route and a given JSON always routes the same
+    way.
+
+    Callers pass only checkpoints that carry behavior
+    (`_checkpoint_carries_behavior`). An inert checkpoint — no waiting time,
+    no speed factor, no effective throttling — is not a mandatory waypoint:
+    chaining it would reroute the entire population through a stage that
+    exists only as drawn geometry (jupedsim-scenarios#76). Note this is a
+    value test, not a declared intent: a checkpoint deliberately placed as a
+    pure waypoint is indistinguishable from a forgotten one in the current
+    schema, so it is dropped too. Express such a route as a `journeys_v2`
+    sequence.
 
     Returns
     -------
@@ -1279,12 +1319,15 @@ def _initialize_with_fallback(
 
         # Checkpoints declared in the scenario but no journey to chain them
         # into — route through them in JSON-insertion order before the
-        # nearest exit (jupedsim-scenarios#8). Empty list → straight-to-exit
-        # behavior, preserved.
+        # nearest exit (jupedsim-scenarios#8). Only checkpoints that carry
+        # behavior; inert ones are not waypoints (jupedsim-scenarios#76).
+        # Read from stage_configs, not direct_steering_info, so the predicate
+        # sees the same normalized values the runtime will act on.
+        # Empty list → straight-to-exit behavior, preserved.
         ordered_checkpoint_ids = [
             cp_id
-            for cp_id, info in direct_steering_info.items()
-            if info.get("stage_type") == "checkpoint"
+            for cp_id, cfg in stage_configs.items()
+            if cfg.get("stage_type") == "checkpoint" and _checkpoint_carries_behavior(cfg)
         ]
 
         # Add agents with nearest exit assignment — all on global DS journey
@@ -2166,8 +2209,9 @@ def _add_agents(
                 # spawn path above — keep flow-spawned agents in sync.
                 ordered_checkpoint_ids = [
                     cp_id
-                    for cp_id, info in ds_info.items()
-                    if info.get("stage_type") == "checkpoint"
+                    for cp_id, cfg in stage_configs.items()
+                    if cfg.get("stage_type") == "checkpoint"
+                    and _checkpoint_carries_behavior(cfg)
                 ]
 
                 for idx, pos in enumerate(positions):
