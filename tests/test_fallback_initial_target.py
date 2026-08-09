@@ -11,11 +11,9 @@ chain position. The journeys_v2 path already used
 ``_pick_initial_stage_target``; both fallback sites now do too (#76).
 
 Covered here via ``_initialize_with_fallback`` (no ``journeys_v2`` at all).
-The sibling site in ``_add_agents`` gets its ``direct_steering_info`` from
-``_add_stages``, which never stamps ``stage_type`` on a checkpoint, so its
-copy of the chain filter (``stage_type == "checkpoint"``) matches nothing
-and its first hop is always the exit — same picker, nothing
-checkpoint-shaped to assert on.
+The sibling site in ``_add_agents`` intentionally does not chain: its first
+hop is always the exit (#79) — same picker, nothing checkpoint-shaped to
+assert on.
 """
 
 from __future__ import annotations

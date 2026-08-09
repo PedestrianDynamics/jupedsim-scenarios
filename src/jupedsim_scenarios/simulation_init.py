@@ -2205,22 +2205,17 @@ def _add_agents(
                         "speed_factor": max(0.0, min(sf, 1.0)),
                     }
 
-                # Same fallback-checkpoint chain logic as the immediate
-                # spawn path above — keep flow-spawned agents in sync.
-                ordered_checkpoint_ids = [
-                    cp_id
-                    for cp_id, cfg in stage_configs.items()
-                    if cfg.get("stage_type") == "checkpoint"
-                    and _checkpoint_carries_behavior(cfg)
-                ]
-
+                # Journey-less distributions on the journeys_v2 path go
+                # straight to the nearest exit — no checkpoint chaining.
+                # _add_stages does not stamp stage_type on checkpoints, so a
+                # checkpoint filter here can never match; chaining is done
+                # only by _initialize_with_fallback (jupedsim-scenarios#79).
                 for idx, pos in enumerate(positions):
                     nearest_exit_id = _find_nearest_exit(
                         pos, exit_geometries=exit_geometries
                     )
-                    path_choices, first_target_stage = _build_fallback_checkpoint_chain(
-                        ordered_checkpoint_ids, nearest_exit_id
-                    )
+                    path_choices = {}
+                    first_target_stage = nearest_exit_id
 
                     agent_radius = float(sampled_radii[idx])
                     agent_v0 = float(sampled_v0s[idx])
@@ -2244,7 +2239,7 @@ def _add_agents(
                     # Nearest-exit direct steering: no v2 journey to attribute.
                     agent_journeys[agent_id] = None
 
-                    # Build DS wait info — chain through checkpoints (if any) then exit.
+                    # Build DS wait info — straight to the nearest exit.
                     base_seed = seed + current_agent_id * 9973
                     target_rng = np.random.RandomState(base_seed)
                     target = _pick_initial_stage_target(
