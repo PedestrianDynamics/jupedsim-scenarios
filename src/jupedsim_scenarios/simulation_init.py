@@ -773,7 +773,12 @@ def _checkpoint_carries_behavior(info: dict[str, Any]) -> bool:
     A checkpoint carries behavior when it makes agents wait, changes their
     speed, or throttles them. Throttling with a non-positive `max_throughput`
     is a no-op at runtime (see the guard in the runner's throttle step), so it
-    does not count.
+    does not count — but an *omitted* rate is not: the runtime reads
+    `max_throughput` with a default of 1.0 and throttles. This function uses
+    the same default, so the predicate agrees with what the runtime will do.
+
+    Takes an entry of the stage-config map the runtime is handed, so the
+    values tested here are the normalized ones that actually apply.
 
     The fallback (no `journeys_v2`) path chains only behavior-carrying
     checkpoints; see `_build_fallback_checkpoint_chain`.
@@ -783,7 +788,7 @@ def _checkpoint_carries_behavior(info: dict[str, Any]) -> bool:
     if abs(_normalize_speed_factor(info.get("speed_factor", 1.0)) - 1.0) > 1e-9:
         return True
     return bool(info.get("enable_throughput_throttling", False)) and (
-        float(info.get("max_throughput", 0.0) or 0.0) > 0.0
+        float(info.get("max_throughput", 1.0) or 0.0) > 0.0
     )
 
 
@@ -1316,11 +1321,13 @@ def _initialize_with_fallback(
         # into — route through them in JSON-insertion order before the
         # nearest exit (jupedsim-scenarios#8). Only checkpoints that carry
         # behavior; inert ones are not waypoints (jupedsim-scenarios#76).
+        # Read from stage_configs, not direct_steering_info, so the predicate
+        # sees the same normalized values the runtime will act on.
         # Empty list → straight-to-exit behavior, preserved.
         ordered_checkpoint_ids = [
             cp_id
-            for cp_id, info in direct_steering_info.items()
-            if info.get("stage_type") == "checkpoint" and _checkpoint_carries_behavior(info)
+            for cp_id, cfg in stage_configs.items()
+            if cfg.get("stage_type") == "checkpoint" and _checkpoint_carries_behavior(cfg)
         ]
 
         # Add agents with nearest exit assignment — all on global DS journey
@@ -2202,8 +2209,9 @@ def _add_agents(
                 # spawn path above — keep flow-spawned agents in sync.
                 ordered_checkpoint_ids = [
                     cp_id
-                    for cp_id, info in ds_info.items()
-                    if info.get("stage_type") == "checkpoint" and _checkpoint_carries_behavior(info)
+                    for cp_id, cfg in stage_configs.items()
+                    if cfg.get("stage_type") == "checkpoint"
+                    and _checkpoint_carries_behavior(cfg)
                 ]
 
                 for idx, pos in enumerate(positions):

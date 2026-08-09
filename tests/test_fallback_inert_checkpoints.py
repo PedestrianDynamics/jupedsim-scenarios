@@ -100,6 +100,16 @@ def _wait_info(scenario):
             },
             True,
         ),
+        # An omitted rate is not the same as a zero one: the runtime reads
+        # max_throughput with a default of 1.0 and throttles, so must this.
+        (
+            {
+                "waiting_time": 0.0,
+                "speed_factor": 1.0,
+                "enable_throughput_throttling": True,
+            },
+            True,
+        ),
         # A bare stage dict (no keys at all) is inert, not an error.
         ({}, False),
     ],
