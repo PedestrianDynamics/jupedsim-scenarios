@@ -1319,8 +1319,12 @@ def _initialize_with_fallback(
             # Build DS wait info — chain through checkpoints (if any) then exit.
             base_seed = seed + idx * 9973
             target_rng = np.random.RandomState(base_seed)
-            first_polygon = direct_steering_info[first_target_stage]["polygon"]
-            target = _random_point_in_polygon(first_polygon, target_rng)
+            target = _pick_initial_stage_target(
+                stage_configs.get(first_target_stage, {}),
+                target_rng,
+                agent_radius,
+                0.25,
+            )
             fallback_agent_wait_info[agent_id] = {
                 "mode": "path",
                 "path_choices": path_choices,
@@ -2199,8 +2203,12 @@ def _add_agents(
                     # Build DS wait info — chain through checkpoints (if any) then exit.
                     base_seed = seed + current_agent_id * 9973
                     target_rng = np.random.RandomState(base_seed)
-                    first_polygon = ds_info[first_target_stage]["polygon"]
-                    target = _random_point_in_polygon(first_polygon, target_rng)
+                    target = _pick_initial_stage_target(
+                        stage_configs.get(first_target_stage, {}),
+                        target_rng,
+                        agent_radius,
+                        0.25,
+                    )
                     agent_wait_info[agent_id] = {
                         "mode": "path",
                         "path_choices": path_choices,
