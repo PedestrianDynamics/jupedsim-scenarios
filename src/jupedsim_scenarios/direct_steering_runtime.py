@@ -49,9 +49,13 @@ def pick_stage_target(wait_state, next_stage_cfg):
     target_rng = random.Random(
         int(wait_state.get("base_seed", 0)) + int(wait_state.get("step_index", 0))
     )
+    # Same clearance floor as _pick_initial_stage_target: include
+    # reach_penetration so first and later hops sample the same region
+    # (jupedsim-scenarios#80).
     target_clearance = max(
         0.05,
         float(wait_state.get("agent_radius", 0.2)) * 0.8,
+        float(wait_state.get("reach_penetration", 0.25)),
     )
     return random_point_in_polygon(
         polygon,
