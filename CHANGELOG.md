@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   persisted `meta` dict with `wall_clock_s`.
 - Golden-run tooling: per-model fixtures under `tests/golden/fixtures/`,
   `tests/golden/hash_trajectory.py`, `scripts/golden_record.py` and
-  `tests/test_golden_run.py` (skipped until `expected.json` exists).
+  `tests/test_golden_run.py`; `expected.json` is recorded from the web app's production run path (`backend/scripts/golden_record.py` there).
 
 ### Changed
 
