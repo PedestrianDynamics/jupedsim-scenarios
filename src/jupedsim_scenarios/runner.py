@@ -41,6 +41,7 @@ import jupedsim as jps
 import numpy as np
 from shapely import wkt
 
+from .capacity import max_agents_for_distribution
 from .direct_steering_runtime import (
     advance_path_target,
     assign_agent_target,
@@ -189,6 +190,18 @@ def _distribution_agent_budget(dist: dict) -> int:
 # beyond that, and desired_speed at 5.0 m/s because typical pedestrian
 # free-flow speeds top out around 1.5 m/s and 5 m/s is already well into
 # "scenario-author typo" territory.
+
+
+class CapacityError(ValueError):
+    """A start area cannot hold the requested agent count.
+
+    Raised by :meth:`Scenario.scale_agents` in ``count`` mode before any
+    mutation happens, so the scenario is left untouched.
+    """
+
+
+def _scaled_count(value: Any, factor: float) -> int:
+    return max(1, int(round(int(value) * factor)))
 
 
 def _ensure_positive_int(name: str, value: Any) -> int:
@@ -1127,6 +1140,86 @@ class Scenario:
         params["flow_start_time"] = normalized_schedule[0]["flow_start_time"]
         params["flow_end_time"] = normalized_schedule[-1]["flow_end_time"]
 
+    def scale_agents(self, factor: float, *, mode: str = "count") -> None:
+        """Multiply the agent population by ``factor`` in place.
+
+        ``mode="count"`` multiplies every distribution's ``number``
+        (plus ``initial_number`` and flow-schedule numbers) by ``factor``.
+        Before mutating, every static (non-flow) start area is checked
+        against the app's capacity rule (:mod:`jupedsim_scenarios.capacity`);
+        if any would overflow, :class:`CapacityError` is raised and nothing
+        is changed. Distributions in ``by_percentage`` mode already follow
+        their area and are left untouched.
+
+        ``mode="flow"`` applies only to flow-spawning distributions: the
+        count is multiplied by ``factor`` and the flow window is stretched
+        by the same factor so the spawn rate is unchanged. A scenario with
+        any non-flow distribution is refused with ``ValueError``.
+        """
+        _ensure_positive_number("factor", factor)
+        _ensure_choice("mode", mode, {"count", "flow"})
+        if mode == "flow":
+            self._scale_agents_flow(factor)
+            return
+        self._scale_agents_count(factor)
+
+    def _scalable_distributions(self) -> list[tuple[str, dict[str, Any]]]:
+        return [
+            (dist_id, dist.setdefault("parameters", {}))
+            for dist_id, dist in self.distributions.items()
+            if dist.get("parameters", {}).get("distribution_mode", "by_number") != "by_percentage"
+        ]
+
+    def _scale_agents_count(self, factor: float) -> None:
+        targets = self._scalable_distributions()
+        overflow = []
+        for dist_id, params in targets:
+            if params.get("use_flow_spawning", False):
+                continue
+            requested = _scaled_count(params.get("number", 0) or 0, factor)
+            limit = max_agents_for_distribution(self, dist_id)
+            if requested > limit:
+                overflow.append(f"{dist_id!r}: requested {requested}, max {limit}")
+        if overflow:
+            raise CapacityError(
+                "Scaled agent count exceeds start-area capacity for "
+                + "; ".join(overflow)
+                + ". Hint: switch to mode='flow' or enlarge the start area in the app."
+            )
+        for _dist_id, params in targets:
+            for key in ("number", "initial_number"):
+                if params.get(key):
+                    params[key] = _scaled_count(params[key], factor)
+            if params.get("flow_schedule"):
+                schedule = _normalized_flow_schedule(params)
+                for entry in schedule:
+                    entry["number"] = _scaled_count(entry["number"], factor)
+                params["flow_schedule"] = schedule
+
+    def _scale_agents_flow(self, factor: float) -> None:
+        targets = self._scalable_distributions()
+        static = [d for d, p in targets if not p.get("use_flow_spawning", False)]
+        if static:
+            raise ValueError(
+                f"mode='flow' needs flow spawning on every distribution; static: {static}. "
+                "Enable flow spawning in the app or use mode='count'."
+            )
+        for _dist_id, params in targets:
+            start = float(params.get("flow_start_time", 0) or 0)
+            end = float(params.get("flow_end_time", 10) or 10)
+            if params.get("number"):
+                params["number"] = _scaled_count(params["number"], factor)
+            params["flow_start_time"] = start
+            params["flow_end_time"] = start + (end - start) * factor
+            if not params.get("flow_schedule"):
+                continue
+            schedule = _normalized_flow_schedule(params)
+            for entry in schedule:
+                entry["number"] = _scaled_count(entry["number"], factor)
+                entry["flow_start_time"] = start + (entry["flow_start_time"] - start) * factor
+                entry["flow_end_time"] = start + (entry["flow_end_time"] - start) * factor
+            params["flow_schedule"] = schedule
+
     def set_zone_speed_factor(self, zone_id: int | str, factor: float):
         """Set the speed factor for a zone."""
         zone_id = self._resolve_zone_id(zone_id)
@@ -1927,6 +2020,11 @@ class ScenarioRunner:
         output_path: str | pathlib.Path | None = None,
     ):
         _ensure_positive_int("every_nth_frame", every_nth_frame)
+        # Fall back to the dt the app exported into simulationParams so a
+        # local run matches the in-app run; jupedsim's built-in applies
+        # only when neither the argument nor the config carries a value.
+        if dt is None:
+            dt = scenario.sim_params.get("dt")
         if dt is not None:
             _ensure_positive_number("dt", dt)
         self._scenario = scenario

@@ -128,3 +128,97 @@ def test_cli_run_surfaces_oserror_as_exit_2(tmp_path, capsys, monkeypatch):
     err = capsys.readouterr().err
     assert rc == 2
     assert "unwritable path" in err
+
+
+def _last_json_line(out: str) -> dict:
+    return json.loads(next(line for line in reversed(out.splitlines()) if line.startswith("{")))
+
+
+def _export_zip(tmp_path) -> pathlib.Path:
+    import zipfile
+
+    data = json.loads(FIXTURE.read_text())
+    wkt = data.pop("walkable_area_wkt")
+    data["config"]["simulation_settings"]["simulationParams"]["max_simulation_time"] = 60
+    archive = tmp_path / "jps_export.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("config.json", json.dumps(data))
+        zf.writestr("geometry.wkt", wkt)
+        zf.writestr("README.md", "# run locally\n")
+    return archive
+
+
+def test_cli_sweep_zip_smoke(tmp_path, capsys):
+    pytest.importorskip("jupedsim")
+    from jupedsim_scenarios import SweepResult
+
+    out_dir = tmp_path / "results"
+    rc = main(["sweep", str(_export_zip(tmp_path)), "--seeds", "2", "--workers", "1", "--out", str(out_dir)])
+    assert rc == 0
+    summary = _last_json_line(capsys.readouterr().out)
+    assert summary["n_trials"] == 2
+    assert summary["n_failed"] == 0
+    assert summary["seeds"] == [0, 1]
+    assert summary["scale"] == 1.0
+    assert summary["mode"] == "count"
+    assert summary["wall_clock_s"] > 0
+    assert sorted(p.name for p in out_dir.glob("*.sqlite")) == ["trial_00000.sqlite", "trial_00001.sqlite"]
+    sweep = SweepResult.load(out_dir / "sweep.json")
+    assert len(sweep) == 2
+    assert sweep.meta["scale"] == 1.0
+    assert sweep.meta["seeds"] == [0, 1]
+    assert (out_dir / "scenario.json").exists()
+
+
+def test_cli_sweep_seed_range(tmp_path, capsys):
+    pytest.importorskip("jupedsim")
+    out_dir = tmp_path / "results"
+    rc = main(
+        ["sweep", str(FIXTURE), "--seed-start", "5", "--seed-end", "6", "--scale", "2", "--out", str(out_dir)]
+    )
+    assert rc == 0
+    summary = _last_json_line(capsys.readouterr().out)
+    assert summary["seeds"] == [5, 6]
+    scenario = json.loads((out_dir / "scenario.json").read_text())
+    assert scenario["distributions"]["jps-distributions_0"]["parameters"]["number"] == 20
+
+
+def test_cli_sweep_capacity_error_is_clean_exit(tmp_path, capsys):
+    pytest.importorskip("jupedsim")
+    rc = main(["sweep", str(FIXTURE), "--scale", "1000", "--out", str(tmp_path / "r")])
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert "capacity" in err
+    assert "mode='flow'" in err
+    assert "Traceback" not in err
+
+
+def test_cli_report_smoke(tmp_path, capsys):
+    pytest.importorskip("jupedsim")
+    pytest.importorskip("matplotlib")
+    from jupedsim_scenarios.report import (
+        SECTION_ARRIVAL,
+        SECTION_DENSITY,
+        SECTION_EXITS,
+        SECTION_FAILURES,
+        SECTION_TIME,
+    )
+
+    out_dir = tmp_path / "results"
+    assert main(["sweep", str(_export_zip(tmp_path)), "--seeds", "2", "--out", str(out_dir)]) == 0
+    report_path = tmp_path / "report.html"
+    rc = main(["report", str(out_dir), "--out", str(report_path)])
+    assert rc == 0
+    assert _last_json_line(capsys.readouterr().out)["report"] == str(report_path)
+    html = report_path.read_text()
+    for heading in (SECTION_TIME, SECTION_EXITS, SECTION_ARRIVAL, SECTION_DENSITY, SECTION_FAILURES):
+        assert f"<h2>{heading}</h2>" in html
+    assert "data:image/png;base64," in html
+    assert "jps-exits_0" in html
+
+
+def test_cli_report_missing_sweep_json(tmp_path, capsys):
+    pytest.importorskip("matplotlib")
+    rc = main(["report", str(tmp_path)])
+    assert rc == 2
+    assert "sweep.json" in capsys.readouterr().err

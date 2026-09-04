@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.7.0] — 2026-09-04
+
+### Added
+
+- **`Scenario.scale_agents(factor, mode="count" | "flow")`** for the local
+  stress-test path. `count` multiplies every start area's `number`,
+  `initial_number` and flow-schedule numbers and refuses with
+  `CapacityError` when a static start area would overflow the app's
+  capacity rule; `flow` keeps the spawn rate and stretches the flow
+  window instead. The rule and `PRACTICAL_PACKING_FACTOR` live in the new
+  `jupedsim_scenarios.capacity` module, which the web app mirrors.
+- **`jps-scenarios sweep`**: seed sweep over an exported zip or directory
+  with `--seeds`/`--seed-start`/`--seed-end`, `--scale`, `--scale-mode`,
+  `--workers`, `--dt`, `--every-nth-frame` and `--out`. Writes per-trial
+  sqlites, a `scenario.json` snapshot and `sweep.json` (with scale, mode,
+  seeds and wall clock in `meta`).
+- **`jps-scenarios report`**: one self-contained HTML report from a saved
+  sweep (time until all arrived, per-exit flow, arrival curve, mean
+  Gaussian density, failures). Needs the `viz` extra.
+- `run_sweep` accepts `dt` and `every_nth_frame`; `SweepResult` gained a
+  persisted `meta` dict with `wall_clock_s`.
+- Golden-run tooling: per-model fixtures under `tests/golden/fixtures/`,
+  `tests/golden/hash_trajectory.py`, `scripts/golden_record.py` and
+  `tests/test_golden_run.py` (skipped until `expected.json` exists).
+
+### Changed
+
+- `dt` now falls back to the scenario's `simulationParams.dt` (as the web
+  app exports it) when not passed explicitly, so a local run matches the
+  in-app run for models with a non-default step (WarpDriverModel: 0.05).
+
 ## [0.6.7] — 2026-08-09
 
 ### Fixed

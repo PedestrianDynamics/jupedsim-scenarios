@@ -1,0 +1,99 @@
+{
+  "config": {
+    "simulation_settings": {
+      "simulationParams": {
+        "model_type": "SocialForceModel",
+        "max_simulation_time": 60,
+        "dt": 0.01
+      },
+      "numberOfSimulations": 1,
+      "baseSeed": 42
+    },
+    "ui_state": {
+      "useShortestPaths": false
+    }
+  },
+  "exits": {
+    "jps-exits_0": {
+      "type": "polygon",
+      "coordinates": [
+        [
+          18,
+          0
+        ],
+        [
+          20,
+          0
+        ],
+        [
+          20,
+          5
+        ],
+        [
+          18,
+          5
+        ],
+        [
+          18,
+          0
+        ]
+      ],
+      "enable_throughput_throttling": false,
+      "max_throughput": 0
+    }
+  },
+  "distributions": {
+    "jps-distributions_0": {
+      "type": "polygon",
+      "coordinates": [
+        [
+          0,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          0,
+          5
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "parameters": {
+        "number": 10,
+        "radius": 0.2,
+        "v0": 1.2,
+        "use_flow_spawning": false,
+        "distribution_mode": "by_number",
+        "radius_distribution": "constant",
+        "v0_distribution": "constant"
+      },
+      "journey_weights": [
+        {
+          "journey_id": "j_corridor",
+          "weight": 100
+        }
+      ]
+    }
+  },
+  "checkpoints": {},
+  "zones": {},
+  "journeys_v2": [
+    {
+      "id": "j_corridor",
+      "name": "Corridor",
+      "color": "#3b82f6",
+      "sequence": [
+        "jps-exits_0"
+      ]
+    }
+  ]
+}
