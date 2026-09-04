@@ -38,6 +38,7 @@ import json
 import os
 import pathlib
 import shutil
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, overload
@@ -86,6 +87,10 @@ class SweepResult:
     trials: list[Trial]
     axes: dict[str, list[Any]] = field(default_factory=dict)
     seeds: list[int | None] = field(default_factory=list)
+    # Free-form sweep-level metadata persisted by ``save``: ``run_sweep``
+    # records ``wall_clock_s``; the CLI adds scale factor, mode and the
+    # scenario snapshot so ``jps-scenarios report`` can read them back.
+    meta: dict[str, Any] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.trials)
@@ -149,6 +154,7 @@ class SweepResult:
         data = {
             "axes": {k: list(v) for k, v in self.axes.items()},
             "seeds": list(self.seeds),
+            "meta": dict(self.meta),
             "trials": [
                 {
                     "index": t.index,
@@ -190,6 +196,7 @@ class SweepResult:
             trials=trials,
             axes={k: list(v) for k, v in data.get("axes", {}).items()},
             seeds=list(data.get("seeds", [])),
+            meta=dict(data.get("meta", {})),
         )
 
 
@@ -232,6 +239,8 @@ def run_sweep(
     output_dir: str | pathlib.Path | None = None,
     workers: int = 1,
     progress: Callable[[int, int, dict], None] | None = None,
+    dt: float | None = None,
+    every_nth_frame: int = 10,
 ) -> SweepResult:
     """Run the scenario once per (axis combination, seed) pair.
 
@@ -265,6 +274,8 @@ def run_sweep(
     progress
         Optional callback invoked after each trial with
         ``(trial_index, total_trials, axis_values_with_seed)``.
+    dt, every_nth_frame
+        Passed through to :func:`run_scenario` for every trial.
 
     Returns
     -------
@@ -273,6 +284,7 @@ def run_sweep(
     if workers < 0:
         raise ValueError(f"workers must be >= 0 (0 = all CPUs), got {workers!r}")
 
+    started = time.perf_counter()
     axes = dict(axes or {})
     apply = dict(apply or {})
     _validate_axes(axes, apply)
@@ -315,10 +327,14 @@ def run_sweep(
         # Scenario crosses the boundary. return_as="list" preserves input
         # order, matching the sequential path.
         results = Parallel(n_jobs=effective_workers, backend="loky", return_as="list")(
-            delayed(run_scenario)(sc, seed=seed) for (_idx, _combo, seed, sc) in plan
+            delayed(run_scenario)(sc, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
+            for (_idx, _combo, seed, sc) in plan
         )
     else:
-        results = [run_scenario(sc, seed=seed) for (_idx, _combo, seed, sc) in plan]
+        results = [
+            run_scenario(sc, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
+            for (_idx, _combo, seed, sc) in plan
+        ]
 
     trials: list[Trial] = []
     for (trial_index, combo, seed, _sc), result in zip(plan, results, strict=True):
@@ -343,6 +359,7 @@ def run_sweep(
         trials=trials,
         axes={k: list(v) for k, v in axes.items()},
         seeds=seeds_list,
+        meta={"wall_clock_s": round(time.perf_counter() - started, 3)},
     )
 
 

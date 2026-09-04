@@ -84,3 +84,30 @@ def test_load_corrupt_zip_raises_valueerror(tmp_path):
     bad.write_bytes(b"this is not a zip file")
     with pytest.raises(ValueError, match="not a valid ZIP archive"):
         load_scenario(str(bad))
+
+
+def test_load_directory_ignores_readme_requirements_and_run_py(tmp_path):
+    """The export zip also ships README.md, requirements.txt and run.py."""
+    data = json.loads(FIXTURE.read_text())
+    wkt = data.pop("walkable_area_wkt")
+    (tmp_path / "config.json").write_text(json.dumps(data))
+    (tmp_path / "geometry.wkt").write_text(wkt)
+    (tmp_path / "README.md").write_text("# how to run\n")
+    (tmp_path / "requirements.txt").write_text("jupedsim-scenarios[viz]==0.7.0\n")
+    (tmp_path / "run.py").write_text("print('hi')\n")
+    s = load_scenario(str(tmp_path))
+    assert s.walkable_area_wkt.startswith("POLYGON")
+
+
+def test_load_zip_ignores_readme_requirements_and_run_py(tmp_path):
+    data = json.loads(FIXTURE.read_text())
+    wkt = data.pop("walkable_area_wkt")
+    archive = tmp_path / "jps_export.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("config.json", json.dumps(data))
+        zf.writestr("geometry.wkt", wkt)
+        zf.writestr("README.md", "# how to run\n")
+        zf.writestr("requirements.txt", "jupedsim-scenarios[viz]==0.7.0\n")
+        zf.writestr("run.py", "print('hi')\n")
+    s = load_scenario(str(archive))
+    assert s.walkable_area_wkt.startswith("POLYGON")

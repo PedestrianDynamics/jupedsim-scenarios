@@ -1,0 +1,59 @@
+{
+  "anticipationvelocitymodel": {
+    "dt": 0.01,
+    "hash": "22b4bcaf2d8dde29e004c35a128d0a883f59437263c98093079a7e70926decd6",
+    "model_type": "AnticipationVelocityModel",
+    "seed": 42,
+    "time_to_all_arrived": 16.59,
+    "xfail": "AnticipationVelocityModel is nondeterministic in jupedsim 1.4.2: two identical fresh-process runs diverge from frame 7 on both the app backend and the library, so no hash is stable."
+  },
+  "collisionfreespeedmodel": {
+    "dt": 0.01,
+    "hash": "06d0eab8a4fcc2f53a61d12a5b8b47750e8ca59f119399e05cf2fe140d5ed971",
+    "model_type": "CollisionFreeSpeedModel",
+    "seed": 42,
+    "time_to_all_arrived": 16.37
+  },
+  "collisionfreespeedmodelv2": {
+    "dt": 0.01,
+    "hash": "06d0eab8a4fcc2f53a61d12a5b8b47750e8ca59f119399e05cf2fe140d5ed971",
+    "model_type": "CollisionFreeSpeedModelV2",
+    "seed": 42,
+    "time_to_all_arrived": 16.37
+  },
+  "collisionfreespeedmodelv3": {
+    "dt": 0.01,
+    "hash": "ba1cc7db8d1e4a9e79addd726da434f993874ace06748b8c23949f78eed14abd",
+    "model_type": "CollisionFreeSpeedModelV3",
+    "seed": 42,
+    "time_to_all_arrived": 15.52
+  },
+  "flow_near_capacity": {
+    "dt": 0.01,
+    "hash": "feaca293c1b7bd8a7d26c89aacaa2c4a8a4cfcf697e1d47f06c9fd95df3594c7",
+    "model_type": "CollisionFreeSpeedModel",
+    "seed": 42,
+    "time_to_all_arrived": 26.53
+  },
+  "generalizedcentrifugalforcemodel": {
+    "dt": 0.01,
+    "hash": "a442b6633b5f01d82ba3ead9cd4148e639ddb2925389cce24fb0a89c3dd2ce4c",
+    "model_type": "GeneralizedCentrifugalForceModel",
+    "seed": 42,
+    "time_to_all_arrived": 18.73
+  },
+  "socialforcemodel": {
+    "dt": 0.01,
+    "hash": "1bc8a585264d23b2565b627a6ea1e2d341b93525ba4c8ebfb2cc88e839dd4dfa",
+    "model_type": "SocialForceModel",
+    "seed": 42,
+    "time_to_all_arrived": 15.13
+  },
+  "warpdrivermodel": {
+    "dt": 0.05,
+    "hash": "f0b82755bfd79d789119f43028d574ebbdd9e1e5cd7453ad12a3f3ffe65f5401",
+    "model_type": "WarpDriverModel",
+    "seed": 42,
+    "time_to_all_arrived": 15.55
+  }
+}
