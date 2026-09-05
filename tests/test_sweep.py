@@ -308,3 +308,38 @@ def test_run_sweep_axis_isolation(corridor_scenario, tmp_path):
     assert _count(corridor_scenario) == original_count
     assert len(sweep) == 2
     sweep.cleanup()
+
+
+# --- failing trials --------------------------------------------------------
+
+
+def _overfill(scenario, value):
+    # Bypass scale_agents so the run itself raises at placement.
+    dist_id = next(iter(scenario.distributions))
+    scenario.distributions[dist_id]["parameters"]["number"] = value
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_run_sweep_records_raising_trial_as_failure(corridor_scenario, tmp_path, workers):
+    sweep = run_sweep(
+        corridor_scenario,
+        axes={"count": [5, 100_000]},
+        apply={"count": _overfill},
+        seeds=[1],
+        output_dir=tmp_path,
+        workers=workers,
+    )
+    try:
+        assert [t.index for t in sweep.trials] == [0, 1]
+        ok, failed = sweep.trials
+        assert ok.result.success
+        assert not failed.result.success
+        assert failed.result.metrics["status"] == "error"
+        assert "jps-distributions_0" in failed.result.metrics["message"]
+        assert failed.result.sqlite_file is None
+        assert failed.seed == 1
+        sweep.save(tmp_path / "sweep.json")
+        reloaded = SweepResult.load(tmp_path / "sweep.json")
+        assert [t.result.success for t in reloaded.trials] == [True, False]
+    finally:
+        sweep.cleanup()

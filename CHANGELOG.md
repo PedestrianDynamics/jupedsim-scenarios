@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.7.1] — 2026-09-05
+
+### Fixed
+
+- **`Scenario.scale_agents(mode="count")` dry-runs the real placer.** The
+  capacity formula is the app's UI estimate and is optimistic against
+  `jps.distribute_by_number`: a scaled count could pass the check and then
+  fail at placement inside the run. After the formula check, every static
+  start area whose count changes is now placed with the same spawn area,
+  radius, distances and seed derivation as the run (shared helpers in
+  `simulation_init`), and `CapacityError` reports the placeable count
+  ("requested 20, fits 17 with this seed"). The check is seed-specific and
+  the sweep applies it once for the base seed; a per-seed placement
+  failure is still possible and lands as a failed trial.
+- **`run_sweep` no longer aborts on a raising trial.** An exception from one
+  trial (sequential or `workers>1`) is captured as a failed `Trial` with
+  `status="error"` and the exception text in `message`; the sweep completes
+  and `sweep.json` is written. `jps-scenarios sweep` exits 1 only when
+  every trial failed, and `report` renders the Failures section from such
+  a sweep while the other sections degrade gracefully.
+
 ## [0.7.0] — 2026-09-04
 
 ### Added

@@ -430,6 +430,116 @@ def _distribute_positions_by_number(
     return candidate_positions[:number_of_agents]
 
 
+def _place_by_number(spawn_area, params, requested_count, seed):
+    """Place ``requested_count`` agents in ``spawn_area`` for one static start area.
+
+    Single owner of the placer call so the real run and
+    :func:`dry_run_static_placement` cannot drift apart.
+
+    Why: jps.distribute_* takes circle-disjointness constraints. Two agents
+    of radius r need centers >= 2r apart, and a circle of radius r needs
+    >= r clearance from a wall. Anything larger here is an undocumented
+    padding and was the bug fixed in #51.
+    """
+    max_radius = _get_max_agent_radius(params)
+    return _distribute_positions_by_number(
+        spawn_area=spawn_area,
+        number_of_agents=requested_count,
+        distance_to_agents=2 * max_radius,
+        distance_to_polygon=max_radius,
+        seed=seed,
+    )
+
+
+def _require_static_capacity(dist_id, spawn_area, params, requested_count):
+    """Reject a static start area whose request exceeds the packing estimate."""
+    max_capacity = _estimate_max_capacity(spawn_area, _get_max_agent_radius(params))
+    if requested_count <= max_capacity:
+        return
+    raise ValueError(
+        f"Distribution '{dist_id}': requested {requested_count} agents "
+        f"but area can hold at most ~{max_capacity}. "
+        f"Reduce the number of agents or enlarge the distribution area."
+    )
+
+
+def _fallback_spawn_area(dist_area, walkable_polygon, obstacles_union):
+    """Spawn area used by the fallback path: minus obstacles, clipped to walkable."""
+    clean_dist_area = dist_area
+    if obstacles_union and not obstacles_union.is_empty:
+        clean_dist_area = dist_area.difference(obstacles_union)
+    return shapely.intersection(clean_dist_area, walkable_polygon)
+
+
+def uses_complete_config(data: dict[str, Any]) -> bool:
+    """True when the journeys_v2 path runs; False selects the fallback path.
+
+    Journey Definition v2 (issue #376) is the only journey path. The
+    fallback runs when no distribution has journeys or a journey is
+    missing altogether.
+    """
+    if "distributions" not in data or not data["distributions"]:
+        return False
+    return bool(data.get("journeys_v2")) and any(
+        (d.get("journey_weights") or [])
+        for d in (data.get("distributions") or {}).values()
+    )
+
+
+def fallback_placement_index(data: dict[str, Any], dist_id: str) -> int:
+    """Position of ``dist_id`` in the fallback path's distribution list.
+
+    Mirrors the filter in :func:`_initialize_with_fallback` (a distribution
+    counts when it has at least three coordinates); the fallback placer
+    seeds start area ``i`` with ``seed + i``.
+    """
+    index = 0
+    for key, dist_data in data["distributions"].items():
+        coords = dist_data.get("coordinates")
+        if not (isinstance(coords, list) and len(coords) >= 3):
+            continue
+        if str(key) == str(dist_id):
+            return index
+        index += 1
+    raise KeyError(dist_id)
+
+
+def dry_run_static_placement(
+    data: dict[str, Any],
+    walkable_polygon: Polygon,
+    dist_id: str,
+    requested_count: int,
+    seed: int,
+) -> list[tuple[float, float]]:
+    """Run the real placer for one static start area without a simulation.
+
+    Uses the same spawn area, radius, distances and seed derivation as the
+    run that :func:`initialize_simulation_from_json` performs for ``seed``,
+    so a scenario that passes here places the same agents in the real run.
+    Raises whatever the run would raise (the capacity ``ValueError`` or
+    jupedsim's ``AgentNumberError``).
+    """
+    from shapely.ops import unary_union
+
+    dist_data = data["distributions"][dist_id]
+    params = dist_data.get("parameters", {})
+    if isinstance(params, str):
+        params = json.loads(params)
+    polygon = Polygon(dist_data["coordinates"])
+    if uses_complete_config(data):
+        spawn_area = shapely.intersection(polygon, walkable_polygon)
+        placement_seed = seed
+    else:
+        holes = [Polygon(interior) for interior in walkable_polygon.interiors]
+        obstacles_union = unary_union(holes) if holes else None
+        spawn_area = _fallback_spawn_area(polygon, walkable_polygon, obstacles_union)
+        placement_seed = seed + fallback_placement_index(data, dist_id)
+    if spawn_area.is_empty:
+        return []
+    _require_static_capacity(dist_id, spawn_area, params, requested_count)
+    return _place_by_number(spawn_area, params, requested_count, placement_seed)
+
+
 def _pick_initial_stage_target(
     stage_cfg: dict[str, Any],
     rng,
@@ -683,13 +793,7 @@ def initialize_simulation_from_json(
         needs_fallback = True
         fallback_reasons.append("No distributions defined")
 
-    # Journey Definition v2 (issue #376) is now the only journey path.
-    # The fallback runs only when no journey is defined at all.
-    has_v2_journeys = bool(data.get("journeys_v2")) and any(
-        (d.get("journey_weights") or [])
-        for d in (data.get("distributions") or {}).values()
-    )
-    if not has_v2_journeys:
+    if not uses_complete_config(data):
         needs_fallback = True
         fallback_reasons.append("No journeys defined")
 
@@ -1112,14 +1216,10 @@ def _initialize_with_fallback(
         if dist_mode == "by_number" and requested_n_agents <= 0:
             continue
 
-        # Remove obstacles from distribution area
-        if obstacles_union and not obstacles_union.is_empty:
-            clean_dist_area = dist_area.difference(obstacles_union)
-        else:
-            clean_dist_area = dist_area
-
-        # Ensure distribution area is within walkable area
-        clean_dist_area = shapely.intersection(clean_dist_area, walkable_area.polygon)
+        # Remove obstacles and clip to the walkable area
+        clean_dist_area = _fallback_spawn_area(
+            dist_area, walkable_area.polygon, obstacles_union
+        )
 
         if clean_dist_area.is_empty:
             logger.warning(f"Distribution '{dist_id}' is outside walkable area")
@@ -1221,20 +1321,14 @@ def _initialize_with_fallback(
             if dist_mode == "by_percentage":
                 percentage = _get_distribution_percentage(spawn_data["params"])
                 requested_count = max(1, int(max_capacity * percentage / 100))
-            if requested_count > max_capacity:
-                raise ValueError(
-                    f"Distribution '{spawn_data['dist_id']}': requested {requested_count} agents "
-                    f"but area can hold at most ~{max_capacity}. "
-                    f"Reduce the number of agents or enlarge the distribution area."
-                )
-            # Why: jps.distribute_* circle-disjointness contract (see
-            # _distribute_positions_until_filled call above for details).
-            positions = _distribute_positions_by_number(
-                spawn_area=spawn_data["area"],
-                number_of_agents=requested_count,
-                distance_to_agents=2 * max_radius,
-                distance_to_polygon=max_radius,
-                seed=seed + spawn_data["index"],
+            _require_static_capacity(
+                spawn_data["dist_id"], spawn_data["area"], spawn_data["params"], requested_count
+            )
+            positions = _place_by_number(
+                spawn_data["area"],
+                spawn_data["params"],
+                requested_count,
+                seed + spawn_data["index"],
             )
         except Exception as e:
             error_msg = (
@@ -1980,21 +2074,9 @@ def _add_agents(
             if dist_mode == "by_percentage":
                 percentage = _get_distribution_percentage(spawn_data["params"])
                 requested_count = max(1, int(max_capacity * percentage / 100))
-            if requested_count > max_capacity:
-                raise ValueError(
-                    f"Distribution '{dist_key}': requested {requested_count} agents "
-                    f"but area can hold at most ~{max_capacity}. "
-                    f"Reduce the number of agents or enlarge the distribution area."
-                )
-            # Why: jps.distribute_* circle-disjointness contract.
-            positions = _distribute_positions_by_number(
-                spawn_area=spawn_data["area"],
-                number_of_agents=requested_count,
-                distance_to_agents=2 * max_radius,
-                distance_to_polygon=max_radius,
-                # Preserve legacy deterministic placement for single-region start areas.
-                seed=seed,
-            )
+            _require_static_capacity(dist_key, spawn_data["area"], params, requested_count)
+            # Preserve legacy deterministic placement for single-region start areas.
+            positions = _place_by_number(spawn_data["area"], params, requested_count, seed)
 
             all_positions.extend(positions)
 

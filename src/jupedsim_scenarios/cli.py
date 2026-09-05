@@ -172,7 +172,7 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
         "out": str(out_dir),
     }
     print(json.dumps(summary))
-    return 0 if n_failed == 0 else 1
+    return 1 if n_failed == len(sweep.trials) else 0
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
@@ -251,7 +251,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--scale-mode",
         choices=("count", "flow"),
         default="count",
-        help="count: multiply start-area counts (refuses on capacity overflow); "
+        help="count: multiply start-area counts (refuses on capacity overflow, checked "
+        "with the scenario's base seed; a seed that still cannot place the agents is "
+        "recorded as a failed trial); "
         "flow: keep the spawn rate and stretch flow windows (needs flow spawning).",
     )
     sweep.add_argument(

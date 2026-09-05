@@ -5,6 +5,7 @@ distribution."""
 from __future__ import annotations
 
 import copy
+import pathlib
 
 import pytest
 
@@ -104,3 +105,44 @@ def test_flow_mode_stretches_schedule_entries(corridor_scenario):
     schedule = _params(corridor_scenario)["flow_schedule"]
     assert [e["number"] for e in schedule] == [20, 40]
     assert [(e["flow_start_time"], e["flow_end_time"]) for e in schedule] == [(0, 20), (20, 40)]
+
+
+# --- placement dry run -----------------------------------------------------
+# Exported app scenario: four static start areas of 10 agents, radius 0.2.
+# The capacity formula allows 23 in 'jps-distributions_2' but the placer
+# fits only 17 with seed 2, so the formula alone is optimistic.
+
+FOUR_START_AREAS = pathlib.Path(__file__).parent / "fixtures" / "four_start_areas"
+
+
+@pytest.fixture
+def four_start_areas():
+    pytest.importorskip("jupedsim")
+    from jupedsim_scenarios import load_scenario
+
+    return load_scenario(str(FOUR_START_AREAS))
+
+
+def test_dry_run_refuses_count_the_placer_cannot_fit(four_start_areas):
+    four_start_areas.seed = 2
+    assert max_agents_for_distribution(four_start_areas, "jps-distributions_2") == 23
+    before = copy.deepcopy(four_start_areas.raw)
+    with pytest.raises(CapacityError, match="mode='flow'") as exc:
+        four_start_areas.scale_agents(2)
+    assert "'jps-distributions_2': requested 20, fits 17 with this seed" in str(exc.value)
+    assert four_start_areas.raw == before
+
+
+def test_dry_run_passes_when_the_placer_fits(four_start_areas):
+    four_start_areas.seed = 2
+    four_start_areas.scale_agents(1.5)
+    counts = [d["parameters"]["number"] for d in four_start_areas.distributions.values()]
+    assert counts == [15, 15, 15, 15]
+
+
+def test_dry_run_is_seed_specific(four_start_areas):
+    # The scenario's own seed (420) places 20 everywhere; the sweep applies
+    # the check once for that seed, so seed 2 can still fail per trial.
+    four_start_areas.scale_agents(2)
+    counts = [d["parameters"]["number"] for d in four_start_areas.distributions.values()]
+    assert counts == [20, 20, 20, 20]
