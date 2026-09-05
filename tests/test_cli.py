@@ -288,3 +288,29 @@ def test_cli_sweep_all_failed_exits_1_and_report_degrades(tmp_path, capsys):
     assert f"<h2>{SECTION_FAILURES}</h2>" in html
     assert "No trial completed" in html
     assert "Only 17 of 20" in html
+
+
+_NOISY_SWEEP = """
+import logging, sys
+logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+from jupedsim_scenarios.cli import main
+sys.exit(main(sys.argv[1:]))
+"""
+
+
+@pytest.mark.parametrize(("verbose", "workers"), [(False, 1), (False, 2), (True, 1)])
+def test_cli_sweep_hides_library_info_unless_verbose(tmp_path, verbose, workers):
+    """A root INFO handler (as PedPy 1.5 installs on import) must not turn
+    every trial into a parameter dump; --verbose opts back in. The handler
+    here lives only in the parent, so the verbose case runs sequentially."""
+    import subprocess
+    import sys
+
+    fixture = pathlib.Path(__file__).parent / "golden" / "fixtures" / "collisionfreespeedmodel"
+    argv = ["sweep", str(fixture), "--seeds", "2", "--workers", str(workers), "--out", str(tmp_path / "out")]
+    if verbose:
+        argv.insert(0, "--verbose")
+    proc = subprocess.run([sys.executable, "-c", _NOISY_SWEEP, *argv], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    combined = proc.stdout + proc.stderr
+    assert ("INFO - " in combined) is verbose

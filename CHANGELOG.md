@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.7.2] — 2026-09-05
+
+### Fixed
+
+- **The CLI no longer prints the library's INFO log lines.** PedPy 1.5
+  installs a root logging handler at INFO on import, which turned every
+  sweep trial into a per-distribution parameter dump. `jps-scenarios`
+  now lowers the library logger to WARNING in the parent and in sweep
+  worker processes; `--verbose` restores the old output.
+
 ## [0.7.1] — 2026-09-05
 
 ### Fixed

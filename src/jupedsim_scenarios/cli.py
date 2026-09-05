@@ -27,6 +27,7 @@ try:
 except Exception:  # pragma: no cover - importlib.metadata failure is benign for --version
     _VERSION = "0.0.0"
 
+from ._quiet import request_quiet
 from .runner import CapacityError, load_scenario, run_scenario, save_scenario
 from .sweep import run_sweep
 
@@ -197,6 +198,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Run JuPedSim scenarios authored in the web app.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {_VERSION}")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show the library's INFO log lines (hidden by default, also in sweep workers).",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Run a single scenario and emit a trajectory sqlite.")
@@ -290,6 +296,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    request_quiet(not args.verbose)
     return args.func(args)
 
 

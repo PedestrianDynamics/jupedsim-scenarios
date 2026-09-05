@@ -45,6 +45,7 @@ from typing import Any, overload
 
 from joblib import Parallel, delayed
 
+from ._quiet import apply_quiet_from_env
 from .runner import Scenario, ScenarioResult, run_scenario
 
 
@@ -61,6 +62,7 @@ def _run_trial(
     ``scale_agents``) must not abort the sweep: the other trials still
     run, the sweep is saved, and ``report`` lists the failure.
     """
+    apply_quiet_from_env()
     try:
         return run_scenario(scenario, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
     except Exception as exc:
