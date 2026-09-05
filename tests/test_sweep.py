@@ -343,3 +343,48 @@ def test_run_sweep_records_raising_trial_as_failure(corridor_scenario, tmp_path,
         assert [t.result.success for t in reloaded.trials] == [True, False]
     finally:
         sweep.cleanup()
+
+
+# --- live progress ---------------------------------------------------------
+
+
+def _set_dt(scenario, value):
+    scenario.sim_params["dt"] = value
+
+
+def test_run_sweep_parallel_progress_is_live(corridor_scenario, tmp_path):
+    """With two workers, ``progress`` fires as trials complete, not once
+    every trial is in.
+
+    The plan is two fast trials (dt=0.01) followed by two slow ones
+    (dt=0.002, about five times the iterations). The first callback
+    fires when the fast pair completes, while the slow pair is still
+    running; the sweep returns at least one slow trial later. A callback
+    that only fires after the whole sweep would land within milliseconds
+    of the return.
+    """
+    import time
+
+    ticks: list[tuple[int, float]] = []
+
+    def _progress(done, total, payload):
+        ticks.append((done, time.perf_counter()))
+        assert total == 4
+
+    sweep = run_sweep(
+        corridor_scenario,
+        axes={"dt": [0.01, 0.002]},
+        apply={"dt": _set_dt},
+        seeds=[1, 2],
+        output_dir=tmp_path,
+        workers=2,
+        progress=_progress,
+    )
+    finished = time.perf_counter()
+    try:
+        assert [done for done, _ in ticks] == [1, 2, 3, 4]
+        assert [t.result.metrics["dt"] for t in sweep.trials] == [0.01, 0.01, 0.002, 0.002]
+        assert all(t.result.success for t in sweep.trials)
+        assert finished - ticks[0][1] > 0.5
+    finally:
+        sweep.cleanup()

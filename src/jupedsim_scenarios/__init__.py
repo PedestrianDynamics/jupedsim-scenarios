@@ -10,6 +10,7 @@ exposes the same surface for scripted pipelines.
 """
 
 from .capacity import PRACTICAL_PACKING_FACTOR, max_agents_for_distribution
+from .local import run_local
 from .runner import (
     CapacityError,
     Scenario,
@@ -37,6 +38,7 @@ __all__ = [
     "Trial",
     "load_scenario",
     "max_agents_for_distribution",
+    "run_local",
     "run_scenario",
     "run_sweep",
     "run_sweep_from_factory",

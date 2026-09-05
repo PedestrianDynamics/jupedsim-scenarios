@@ -18,18 +18,10 @@ import argparse
 import json
 import pathlib
 import sys
-import time
-
-try:
-    from importlib.metadata import version as _pkg_version
-
-    _VERSION = _pkg_version("jupedsim-scenarios")
-except Exception:  # pragma: no cover - importlib.metadata failure is benign for --version
-    _VERSION = "0.0.0"
 
 from ._quiet import request_quiet
-from .runner import CapacityError, load_scenario, run_scenario, save_scenario
-from .sweep import run_sweep
+from .local import _VERSION, run_local
+from .runner import CapacityError, load_scenario, run_scenario
 
 SCENARIO_HELP = (
     "Scenario source: a self-contained JSON file, a ZIP archive, "
@@ -114,53 +106,30 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
     if not scenario_path.exists():
         print(f"error: scenario path not found: {scenario_path}", file=sys.stderr)
         return 2
+    out_dir = pathlib.Path(args.out)
+
+    def _progress(done: int, total: int, payload: dict) -> None:
+        print(f"trial {done}/{total} seed={payload.get('seed')}", flush=True)
+
     try:
         seeds = _sweep_seeds(args)
-        scenario = load_scenario(str(scenario_path))
-        scenario.scale_agents(args.scale, mode=args.scale_mode)
+        sweep = run_local(
+            str(scenario_path),
+            out_dir=out_dir,
+            seeds=seeds,
+            workers=args.workers,
+            dt=args.dt,
+            every_nth_frame=args.every_nth_frame,
+            scale=args.scale,
+            scale_mode=args.scale_mode,
+            progress=_progress,
+        )
     except CapacityError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 3
     except (ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-
-    out_dir = pathlib.Path(args.out)
-
-    def _progress(done: int, total: int, payload: dict) -> None:
-        print(f"trial {done}/{total} seed={payload.get('seed')}", flush=True)
-
-    started = time.perf_counter()
-    try:
-        sweep = run_sweep(
-            scenario,
-            seeds=seeds,
-            output_dir=out_dir,
-            workers=args.workers,
-            progress=_progress,
-            dt=args.dt,
-            every_nth_frame=args.every_nth_frame,
-        )
-        save_scenario(scenario, out_dir / "scenario.json")
-    except (ValueError, OSError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    wall_clock = round(time.perf_counter() - started, 3)
-
-    sweep.meta.update(
-        {
-            "scenario_source": str(scenario_path),
-            "scenario_json": "scenario.json",
-            "scale": args.scale,
-            "scale_mode": args.scale_mode,
-            "seeds": seeds,
-            "dt": args.dt,
-            "every_nth_frame": args.every_nth_frame,
-            "wall_clock_s": wall_clock,
-            "library_version": _VERSION,
-        }
-    )
-    sweep.save(out_dir / "sweep.json")
 
     n_failed = sum(not t.result.success for t in sweep.trials)
     summary = {
@@ -169,7 +138,7 @@ def _cmd_sweep(args: argparse.Namespace) -> int:
         "scale": args.scale,
         "mode": args.scale_mode,
         "seeds": seeds,
-        "wall_clock_s": wall_clock,
+        "wall_clock_s": sweep.meta["wall_clock_s"],
         "out": str(out_dir),
     }
     print(json.dumps(summary))

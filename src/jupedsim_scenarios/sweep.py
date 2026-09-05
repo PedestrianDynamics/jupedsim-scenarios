@@ -364,9 +364,13 @@ def run_sweep(
     if use_parallel:
         # Loky backend uses cloudpickle, so closures in user code pickle
         # cleanly even though we don't rely on that — only the mutated
-        # Scenario crosses the boundary. return_as="list" preserves input
-        # order, matching the sequential path.
-        results = Parallel(n_jobs=effective_workers, backend="loky", return_as="list")(
+        # Scenario crosses the boundary. return_as="generator" yields in
+        # input order, matching the sequential path, and lets the loop
+        # below report progress as each trial completes instead of once
+        # every trial is in.
+        results: Iterable[ScenarioResult] = Parallel(
+            n_jobs=effective_workers, backend="loky", return_as="generator"
+        )(
             delayed(_run_trial)(sc, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
             for (_idx, _combo, seed, sc) in plan
         )
@@ -508,7 +512,11 @@ def run_sweep_from_factory(
     use_parallel = effective_workers > 1 and total > 1
 
     if use_parallel:
-        results = Parallel(n_jobs=effective_workers, backend="loky", return_as="list")(
+        # Ordered generator so ``progress`` fires per completed trial
+        # (see run_sweep).
+        results: Iterable[ScenarioResult] = Parallel(
+            n_jobs=effective_workers, backend="loky", return_as="generator"
+        )(
             delayed(_run_trial)(sc, seed=seed)
             for (_idx, _params, seed, sc, _extras) in plan
         )

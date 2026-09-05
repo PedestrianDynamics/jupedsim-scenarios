@@ -116,6 +116,12 @@ mutator to an isolated `.copy()` of the base, and runs the trials.
 scenario *shape* per trial — geometry that depends on the parameters,
 journeys that vary — use `run_sweep_from_factory` instead.
 
+For the plain seed sweep the CLI runs, `run_local(scenario, out_dir=...,
+seeds=10, workers=4)` loads the scenario, runs the seeds and writes
+`scenario.json` plus `sweep.json` next to the trial sqlites, ready for
+`jps-scenarios report`. It prints nothing; pass `progress=` to render
+per-trial completion yourself.
+
 For deeper coverage see the how-to notebooks:
 
 - [`05_sweep_basics`](examples/howtos/05_sweep_basics.ipynb) — axes / apply / paired conditions
@@ -175,7 +181,7 @@ sphinx-build -b html docs/source docs/build/html
 
 ## Roadmap
 
-Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.7.2**.
+Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.7.3**.
 
 On the table for future releases:
 

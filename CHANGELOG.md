@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.7.3] — 2026-09-05
+
+### Added
+
+- **`run_local(scenario, out_dir=..., seeds=..., ...)`.** The library form
+  of `jps-scenarios sweep`: loads and optionally scales the scenario, runs
+  the seeds, writes `scenario.json` and `sweep.json` next to the trial
+  sqlites, fills `sweep.meta` and returns the `SweepResult`. It prints
+  nothing; a `progress` callback carries per-trial completion. The CLI
+  now calls it, so the output layout that `build_report` reads is
+  defined once.
+
+### Changed
+
+- **Live progress in parallel sweeps.** `run_sweep` and
+  `run_sweep_from_factory` with `workers > 1` now invoke `progress` as
+  each trial completes, in trial order, instead of reporting every trial
+  at the end. Results, ordering and on-disk layout are unchanged.
+
 ## [0.7.2] — 2026-09-05
 
 ### Fixed
