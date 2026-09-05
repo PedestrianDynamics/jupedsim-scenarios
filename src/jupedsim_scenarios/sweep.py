@@ -47,6 +47,41 @@ from joblib import Parallel, delayed
 
 from .runner import Scenario, ScenarioResult, run_scenario
 
+
+def _run_trial(
+    scenario: Scenario,
+    *,
+    seed: int | None,
+    dt: float | None = None,
+    every_nth_frame: int = 10,
+) -> ScenarioResult:
+    """Run one trial; any exception becomes a failed ``ScenarioResult``.
+
+    A trial that raises (for example a per-seed placement failure after
+    ``scale_agents``) must not abort the sweep: the other trials still
+    run, the sweep is saved, and ``report`` lists the failure.
+    """
+    try:
+        return run_scenario(scenario, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
+    except Exception as exc:
+        return ScenarioResult(
+            metrics={
+                "success": False,
+                "status": "error",
+                "message": f"{type(exc).__name__}: {exc}",
+                "evacuation_time": 0.0,
+                "total_agents": 0,
+                "agents_evacuated": 0,
+                "agents_remaining": 0,
+                "all_evacuated": False,
+                "frame_rate": 0.0,
+                "seed": seed if seed is not None else scenario.seed,
+                "walkable_polygon": scenario.walkable_polygon,
+            },
+            sqlite_file=None,
+        )
+
+
 # A per-axis mutator: receives the trial's Scenario copy and the axis value,
 # returns nothing. Side-effect only — mutates the scenario in place.
 AxisApplyFn = Callable[[Scenario, Any], None]
@@ -270,7 +305,10 @@ def run_sweep(
         ``joblib.Parallel`` (loky backend); ``0`` selects
         ``os.cpu_count()``. Trial-level mutations are applied in the
         parent process, so user ``apply`` callables don't need any
-        special pickling treatment.
+        special pickling treatment. A trial that raises (for example a
+        seed-specific placement failure) is recorded as a failed
+        ``Trial`` (``result.metrics["status"] == "error"``) and does
+        not abort the sweep.
     progress
         Optional callback invoked after each trial with
         ``(trial_index, total_trials, axis_values_with_seed)``.
@@ -327,12 +365,12 @@ def run_sweep(
         # Scenario crosses the boundary. return_as="list" preserves input
         # order, matching the sequential path.
         results = Parallel(n_jobs=effective_workers, backend="loky", return_as="list")(
-            delayed(run_scenario)(sc, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
+            delayed(_run_trial)(sc, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
             for (_idx, _combo, seed, sc) in plan
         )
     else:
         results = [
-            run_scenario(sc, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
+            _run_trial(sc, seed=seed, dt=dt, every_nth_frame=every_nth_frame)
             for (_idx, _combo, seed, sc) in plan
         ]
 
@@ -469,12 +507,12 @@ def run_sweep_from_factory(
 
     if use_parallel:
         results = Parallel(n_jobs=effective_workers, backend="loky", return_as="list")(
-            delayed(run_scenario)(sc, seed=seed)
+            delayed(_run_trial)(sc, seed=seed)
             for (_idx, _params, seed, sc, _extras) in plan
         )
     else:
         results = [
-            run_scenario(sc, seed=seed)
+            _run_trial(sc, seed=seed)
             for (_idx, _params, seed, sc, _extras) in plan
         ]
 

@@ -222,3 +222,69 @@ def test_cli_report_missing_sweep_json(tmp_path, capsys):
     rc = main(["report", str(tmp_path)])
     assert rc == 2
     assert "sweep.json" in capsys.readouterr().err
+
+
+FOUR_START_AREAS = pathlib.Path(__file__).parent / "fixtures" / "four_start_areas"
+
+
+def test_cli_sweep_and_report_with_one_failing_seed(tmp_path, capsys):
+    """Scale 2 passes the dry run for the base seed (420) but seed 2 cannot
+    place 20 agents in 'jps-distributions_2': the sweep still completes,
+    sweep.json is written and the report lists the failure."""
+    pytest.importorskip("jupedsim")
+    pytest.importorskip("matplotlib")
+    from jupedsim_scenarios import SweepResult
+    from jupedsim_scenarios.report import SECTION_FAILURES, SECTION_TIME
+
+    out_dir = tmp_path / "results"
+    rc = main(
+        ["sweep", str(FOUR_START_AREAS), "--seeds", "3", "--scale", "2", "--workers", "2", "--out", str(out_dir)]
+    )
+    out = capsys.readouterr()
+    assert rc == 0, out.err
+    assert "Traceback" not in out.err
+    summary = _last_json_line(out.out)
+    assert summary["n_trials"] == 3
+    assert summary["n_failed"] == 1
+    sweep = SweepResult.load(out_dir / "sweep.json")
+    failed = [t for t in sweep.trials if not t.result.success]
+    assert [t.seed for t in failed] == [2]
+    assert "Only 17 of 20" in failed[0].result.metrics["message"]
+
+    report_path = tmp_path / "report.html"
+    assert main(["report", str(out_dir), "--out", str(report_path)]) == 0
+    html = report_path.read_text()
+    assert f"<h2>{SECTION_TIME}</h2>" in html
+    assert "mean over 2 seeds" in html
+    assert f"<h2>{SECTION_FAILURES}</h2>" in html
+    assert "Only 17 of 20" in html
+
+
+def test_cli_sweep_all_failed_exits_1_and_report_degrades(tmp_path, capsys):
+    """Only seed 2, which cannot place the scaled count: every trial fails,
+    the exit code is 1, sweep.json exists and the report renders without
+    a single successful trial."""
+    pytest.importorskip("jupedsim")
+    pytest.importorskip("matplotlib")
+    from jupedsim_scenarios.report import SECTION_FAILURES
+
+    out_dir = tmp_path / "results"
+    rc = main(
+        [
+            "sweep", str(FOUR_START_AREAS), "--seed-start", "2", "--seed-end", "2",
+            "--scale", "2", "--out", str(out_dir),
+        ]
+    )
+    out = capsys.readouterr()
+    assert rc == 1
+    assert "Traceback" not in out.err
+    summary = _last_json_line(out.out)
+    assert (summary["n_trials"], summary["n_failed"]) == (1, 1)
+    assert (out_dir / "sweep.json").exists()
+
+    report_path = tmp_path / "report.html"
+    assert main(["report", str(out_dir), "--out", str(report_path)]) == 0
+    html = report_path.read_text()
+    assert f"<h2>{SECTION_FAILURES}</h2>" in html
+    assert "No trial completed" in html
+    assert "Only 17 of 20" in html

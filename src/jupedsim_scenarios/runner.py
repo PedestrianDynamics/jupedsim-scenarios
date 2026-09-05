@@ -28,6 +28,7 @@ import json
 import os
 import pathlib
 import random
+import re
 import sqlite3
 import tempfile
 import warnings
@@ -58,6 +59,7 @@ from .simulation_init import (
     _sample_agent_values,
     build_agent_path_state,
     create_agent_parameters,
+    dry_run_static_placement,
     initialize_simulation_from_json,
 )
 
@@ -202,6 +204,16 @@ class CapacityError(ValueError):
 
 def _scaled_count(value: Any, factor: float) -> int:
     return max(1, int(round(int(value) * factor)))
+
+
+_CAPACITY_HINT = " Hint: switch to mode='flow' or enlarge the start area in the app."
+_PLACED_COUNT_RE = re.compile(r"[Oo]nly (\d+) (?:of \d+|positions)")
+
+
+def _placeable_count(exc: Exception) -> int | None:
+    """Placed count reported by the placer's error message, if any."""
+    match = _PLACED_COUNT_RE.search(str(exc))
+    return int(match.group(1)) if match else None
 
 
 def _ensure_positive_int(name: str, value: Any) -> int:
@@ -1146,10 +1158,17 @@ class Scenario:
         ``mode="count"`` multiplies every distribution's ``number``
         (plus ``initial_number`` and flow-schedule numbers) by ``factor``.
         Before mutating, every static (non-flow) start area is checked
-        against the app's capacity rule (:mod:`jupedsim_scenarios.capacity`);
-        if any would overflow, :class:`CapacityError` is raised and nothing
-        is changed. Distributions in ``by_percentage`` mode already follow
-        their area and are left untouched.
+        against the app's capacity rule (:mod:`jupedsim_scenarios.capacity`)
+        and, for every start area whose count would change, the real
+        placer is dry-run with the scenario's own seed; if any start area
+        would overflow or cannot place the scaled count,
+        :class:`CapacityError` is raised and nothing is changed. The dry
+        run is seed-specific: a count that fits with ``self.seed`` may not
+        fit with another seed. ``jps-scenarios sweep`` applies it once for
+        the base seed, so a per-seed placement failure is still possible
+        and is recorded as a failed trial. Distributions in
+        ``by_percentage`` mode already follow their area and are left
+        untouched.
 
         ``mode="flow"`` applies only to flow-spawning distributions: the
         count is multiplied by ``factor`` and the flow window is stretched
@@ -1184,7 +1203,16 @@ class Scenario:
             raise CapacityError(
                 "Scaled agent count exceeds start-area capacity for "
                 + "; ".join(overflow)
-                + ". Hint: switch to mode='flow' or enlarge the start area in the app."
+                + "."
+                + _CAPACITY_HINT
+            )
+        unplaceable = self._dry_run_static_placements(targets, factor)
+        if unplaceable:
+            raise CapacityError(
+                "Scaled agent count does not fit the start area for "
+                + "; ".join(unplaceable)
+                + "."
+                + _CAPACITY_HINT
             )
         for _dist_id, params in targets:
             for key in ("number", "initial_number"):
@@ -1195,6 +1223,28 @@ class Scenario:
                 for entry in schedule:
                     entry["number"] = _scaled_count(entry["number"], factor)
                 params["flow_schedule"] = schedule
+
+    def _dry_run_static_placements(
+        self, targets: list[tuple[str, dict[str, Any]]], factor: float
+    ) -> list[str]:
+        """Run the real placer for each static start area whose count changes."""
+        failures = []
+        for dist_id, params in targets:
+            if params.get("use_flow_spawning", False):
+                continue
+            current = int(params.get("number", 0) or 0)
+            requested = _scaled_count(current, factor)
+            if requested == current:
+                continue
+            try:
+                dry_run_static_placement(
+                    self.raw, self.walkable_polygon, dist_id, requested, self.seed
+                )
+            except Exception as exc:
+                placed = _placeable_count(exc)
+                detail = f"fits {placed}" if placed is not None else str(exc)
+                failures.append(f"{dist_id!r}: requested {requested}, {detail} with this seed")
+        return failures
 
     def _scale_agents_flow(self, factor: float) -> None:
         targets = self._scalable_distributions()
