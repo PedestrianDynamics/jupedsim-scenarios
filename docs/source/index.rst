@@ -63,6 +63,9 @@ packaged as a zip — and gives you three things:
 - :py:func:`~jupedsim_scenarios.run_sweep_from_factory` — factory-style
   sweeps for studies where the geometry itself depends on the trial
   parameters.
+- :py:func:`~jupedsim_scenarios.run_local` — the seed sweep behind
+  ``jps-scenarios sweep``: writes ``scenario.json``, ``sweep.json`` and
+  the trial sqlites into one directory, ready for ``jps-scenarios report``.
 
 Install
 =======
