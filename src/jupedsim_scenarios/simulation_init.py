@@ -72,7 +72,7 @@ def create_agent_parameters(
     elif model_type == "CollisionFreeSpeedModelV2":
         v2_params = base_params.copy()
         v2_params["desired_speed"] = params.get("v0", 1.2)
-        v2_params["time_gap"] = 1.0
+        v2_params["time_gap"] = getattr(global_params, "time_gap", 1.0)
         if global_params:
             v2_params["strength_neighbor_repulsion"] = getattr(
                 global_params, "strength_neighbor_repulsion", 2.6
