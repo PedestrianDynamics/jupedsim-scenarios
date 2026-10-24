@@ -45,3 +45,20 @@ def test_v2_scenario_runs_end_to_end():
     result = run_scenario(s, seed=3)
     assert result.success
     result.cleanup()
+
+
+def test_v2_agent_time_gap_comes_from_model_params():
+    # V2's time gap T was hard-coded to 1.0, so a user-set value never
+    # reached the agents.
+    from types import SimpleNamespace
+
+    from jupedsim_scenarios.simulation_init import create_agent_parameters
+
+    def time_gap(global_params):
+        return create_agent_parameters(
+            "CollisionFreeSpeedModelV2", (0.0, 0.0), {}, global_params
+        ).time_gap
+
+    assert time_gap(SimpleNamespace(time_gap=1.7)) == pytest.approx(1.7)
+    assert time_gap(SimpleNamespace()) == pytest.approx(1.0)
+    assert time_gap(None) == pytest.approx(1.0)

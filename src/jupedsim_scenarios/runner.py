@@ -336,7 +336,7 @@ _AGENT_PARAM_KEYS = frozenset({
     "distribution_mode", "number",
 })
 _MODEL_PARAM_KEYS = frozenset({
-    "strength_neighbor_repulsion", "range_neighbor_repulsion",
+    "strength_neighbor_repulsion", "range_neighbor_repulsion", "time_gap",
     "gcfm_strength_neighbor_repulsion", "gcfm_strength_geometry_repulsion",
     "gcfm_max_neighbor_interaction_distance",
     "gcfm_max_geometry_interaction_distance",

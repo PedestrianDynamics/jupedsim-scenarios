@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.7.4] — 2026-10-24
+
+### Fixed
+
+- **CollisionFreeSpeedModelV2 time gap `T`.** Agents now take `time_gap`
+  from the model parameters (`simulationParams.time_gap`, or
+  `set_model_params(time_gap=...)`) instead of a hard-coded 1.0, which
+  stays the default.
+
 ## [0.7.3] — 2026-09-05
 
 ### Added
