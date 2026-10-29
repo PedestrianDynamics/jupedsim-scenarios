@@ -15,6 +15,12 @@ import pedpy
 import shapely
 from shapely.geometry import Point, Polygon
 
+from .agent_parameters import (
+    _AVM_AGENT_DEFAULTS,
+    _V3_AGENT_DEFAULTS,
+    active_overrides,
+)
+
 logger = logging.getLogger(__name__)
 
 required_packages = [
@@ -44,29 +50,6 @@ def install_if_missing(pip_name: str, import_name: str | None = None):
         subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
     else:
         logger.info(f"{pip_name} already installed.")
-
-
-# Per-agent CollisionFreeSpeedModelV3 fields read from ``v3_<field>`` settings;
-# defaults equal JuPedSim's own dataclass defaults.
-_V3_AGENT_DEFAULTS = {
-    "time_gap": 1.0,
-    "strength_neighbor_repulsion": 8.0,
-    "range_neighbor_repulsion": 0.1,
-    "strength_geometry_repulsion": 5.0,
-    "range_geometry_repulsion": 0.02,
-    "range_x_scale": 20.0,
-    "range_y_scale": 8.0,
-    "theta_max_upper_bound": 1.57,
-    "agent_buffer": 0.0,
-}
-
-# Per-agent AnticipationVelocityModel fields read from ``avm_<field>`` settings.
-_AVM_AGENT_DEFAULTS = {
-    "time_gap": 1.06,
-    "strength_neighbor_repulsion": 8.0,
-    "range_neighbor_repulsion": 0.1,
-    "wall_buffer_distance": 0.1,
-}
 
 
 def _first_set(global_params, names, default):
@@ -102,6 +85,7 @@ def create_agent_parameters(
     if model_type == "CollisionFreeSpeedModel":
         base_params["desired_speed"] = params.get("v0", 1.2)
         base_params["time_gap"] = getattr(global_params, "csm_time_gap", 1.0)
+        base_params.update(active_overrides(params, model_type))
         return jps.CollisionFreeSpeedModelAgentParameters(**base_params)
 
     elif model_type == "CollisionFreeSpeedModelV2":
@@ -115,6 +99,11 @@ def create_agent_parameters(
             v2_params["range_neighbor_repulsion"] = getattr(
                 global_params, "range_neighbor_repulsion", 0.1
             )
+        for key in ("strength_geometry_repulsion", "range_geometry_repulsion"):
+            value = getattr(global_params, f"v2_{key}", None)
+            if value is not None:
+                v2_params[key] = value
+        v2_params.update(active_overrides(params, model_type))
         return jps.CollisionFreeSpeedModelV2AgentParameters(**v2_params)
 
     elif model_type == "CollisionFreeSpeedModelV3":
@@ -122,6 +111,7 @@ def create_agent_parameters(
         v3_params["desired_speed"] = params.get("v0", 1.2)
         for field, default in _V3_AGENT_DEFAULTS.items():
             v3_params[field] = getattr(global_params, f"v3_{field}", default)
+        v3_params.update(active_overrides(params, model_type))
         return jps.CollisionFreeSpeedModelV3AgentParameters(**v3_params)
 
     elif model_type == "WarpDriverModel":
@@ -144,6 +134,7 @@ def create_agent_parameters(
             gcfm_params["journey_id"] = journey_id
         if stage_id is not None:
             gcfm_params["stage_id"] = stage_id
+        gcfm_params.update(active_overrides(params, model_type))
         try:
             return jps.GeneralizedCentrifugalForceModelAgentParameters(**gcfm_params)
         except TypeError as error:
@@ -173,6 +164,7 @@ def create_agent_parameters(
             if global_params
             else 2000
         )
+        sfm_params.update(active_overrides(params, model_type))
         return jps.SocialForceModelAgentParameters(**sfm_params)
 
     elif model_type == "AnticipationVelocityModel":
@@ -187,6 +179,7 @@ def create_agent_parameters(
         avm_params["reaction_time"] = _first_set(
             global_params, ("reaction_time", "s0"), 0.3
         )
+        avm_params.update(active_overrides(params, model_type))
         return jps.AnticipationVelocityModelAgentParameters(**avm_params)
 
     else:
