@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`set_model_params(anticipation_time=...)` had no effect** on AVM
   agents. `anticipation_time` now wins over `T`, and `reaction_time`
   over `s0` (fallbacks stay 1.0 and 0.3).
+- **CollisionFreeSpeedModel (V1) time gap was never read from settings;**
+  it now comes from `csm_time_gap`.
 
 ### Compatibility
 
