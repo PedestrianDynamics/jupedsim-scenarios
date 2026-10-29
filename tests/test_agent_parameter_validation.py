@@ -258,3 +258,10 @@ def test_gcfm_cross_field_names_inherited_b_max():
     msg = str(exc_info.value)
     assert 'inherited from setting "b_max"' in msg, msg
     assert 'inherited from setting "b_min"' not in msg, msg
+
+
+def test_inherited_note_skips_settings_key_left_at_none():
+    settings = SimpleNamespace(reaction_time=None, s0=0)
+    with pytest.raises(AgentParameterError) as exc_info:
+        validate_agent_parameters(_data(None), AVM, settings)
+    assert 'inherited from setting "s0"' in str(exc_info.value)

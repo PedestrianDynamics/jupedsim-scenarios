@@ -261,9 +261,10 @@ def _lower_edge(agent, model_type: str, field: str, bound: Bound) -> float | Non
 
 
 def _inherited_setting(model_type: str, field: str, global_params) -> str:
-    """Settings key ``field`` inherits from: the first one present, else the first."""
+    """Settings key ``field`` inherits from: the first one set, else the first."""
     keys = PER_AGENT_FIELDS[model_type][field][0]
-    return next((key for key in keys if hasattr(global_params, key)), keys[0])
+    is_set = (key for key in keys if getattr(global_params, key, None) is not None)
+    return next(is_set, keys[0])
 
 
 def _inherited_note(model_type, field, overridden, global_params, prefix="") -> str:
