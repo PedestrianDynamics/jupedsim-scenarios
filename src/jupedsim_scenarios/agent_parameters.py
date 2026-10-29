@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import json
 import math
+import numbers
 from dataclasses import dataclass
+
+import numpy as np
 
 OVERRIDES_KEY = "agent_parameter_overrides"
 
@@ -165,7 +168,8 @@ class AgentParameterError(ValueError):
 
 
 def _is_number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    """A real number (numpy scalars included), never a boolean."""
+    return isinstance(value, numbers.Real) and not isinstance(value, (bool, np.bool_))
 
 
 def _area_label(key: str, entry: dict) -> str:
@@ -182,6 +186,23 @@ def _area_params(entry: dict) -> dict:
     if isinstance(params, str):
         params = json.loads(params)
     return params
+
+
+def overriding_area_labels(distributions, model_type: str, field: str) -> list[str]:
+    """Labels of the spawn areas whose ``model_type`` overrides set ``field``."""
+    return [
+        _area_label(key, entry)
+        for key, entry in distributions.items()
+        if field in active_overrides(_area_params(entry), model_type)
+    ]
+
+
+def precedence_warning(settings_key: str, field: str, labels: list[str]) -> str:
+    """Message for a changed default that overriding spawn areas ignore."""
+    return (
+        f"{settings_key} changes the default of {field}; spawn areas that "
+        f"override it keep their value: {', '.join(labels)}"
+    )
 
 
 def _format_bound(bound: Bound, lo: float | None) -> str:
