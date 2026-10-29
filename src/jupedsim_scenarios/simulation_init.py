@@ -19,6 +19,7 @@ from .agent_parameters import (
     _AVM_AGENT_DEFAULTS,
     _V3_AGENT_DEFAULTS,
     active_overrides,
+    validate_agent_parameters,
 )
 
 logger = logging.getLogger(__name__)
@@ -812,6 +813,9 @@ def initialize_simulation_from_json(
     # Only require exits - everything else can be fallback
     if "exits" not in data or not data["exits"]:
         raise ValueError("At least one exit is required in JSON configuration")
+
+    # Reject invalid agent parameters before any agent is placed.
+    validate_agent_parameters(data, model_type, global_parameters)
 
     # Check what's missing and use fallback logic
     needs_fallback = False

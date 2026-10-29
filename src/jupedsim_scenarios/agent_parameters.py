@@ -7,6 +7,7 @@ active model applies; absent means the area inherits the global settings.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 
@@ -153,3 +154,126 @@ def settings_key_fields(model_type: str) -> dict[str, str]:
         for field, (keys, _fallback) in PER_AGENT_FIELDS.get(model_type, {}).items()
         for key in keys
     }
+
+
+# Fields no override may set, for any model.
+_EXCLUDED_FIELDS = ("radius", "desired_speed")
+
+
+class AgentParameterError(ValueError):
+    """A spawn area's agent parameters are invalid; the run does not start."""
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _area_label(key: str, entry: dict) -> str:
+    """Display name of a spawn area: its ``name``, else ``Start {N+1}``."""
+    name = entry.get("name")
+    if isinstance(name, str) and name.strip():
+        return name
+    suffix = str(key).rsplit("_", 1)[-1]
+    return f"Start {int(suffix) + 1}" if suffix.isdigit() else str(key)
+
+
+def _area_params(entry: dict) -> dict:
+    params = entry.get("parameters") or {}
+    if isinstance(params, str):
+        params = json.loads(params)
+    return params
+
+
+def _format_bound(bound: Bound, lo: float | None) -> str:
+    left = "(" if bound.lo_open else "["
+    right = ")" if bound.hi_open else "]"
+    lo_text = "-inf" if lo is None else f"{lo:g}"
+    hi_text = "inf" if bound.hi is None else f"{bound.hi:g}"
+    return f"{left}{lo_text}, {hi_text}{right}"
+
+
+def _bound_problem(value, bound: Bound, lo: float | None) -> str | None:
+    """Return why ``value`` breaks ``bound`` (lower edge ``lo``), or ``None``."""
+    if not _is_number(value) or not math.isfinite(value):
+        return f"needs a finite number, got {value!r}, for"
+    too_low = lo is not None and (value <= lo if bound.lo_open else value < lo)
+    too_high = bound.hi is not None and (
+        value >= bound.hi if bound.hi_open else value > bound.hi
+    )
+    if too_low or too_high:
+        return f"value {value!r} is outside {_format_bound(bound, lo)} for"
+    return None
+
+
+def _check_model_fields(model, fields, fail) -> None:
+    if not isinstance(fields, dict):
+        raise fail(f"{model} overrides must map field names to numbers")
+    for field, value in fields.items():
+        if field in _EXCLUDED_FIELDS:
+            raise fail(f'{model} cannot override "{field}"')
+        if not _is_number(value):
+            raise fail(f'{model} needs a number, got {value!r}, for "{field}"')
+
+
+def _check_map_shape(overrides, fail) -> None:
+    """Checks 1 and 2: a dict of dicts of numbers, without excluded fields."""
+    if not isinstance(overrides, dict):
+        raise fail(f"{OVERRIDES_KEY} must map model names to fields")
+    for model, fields in overrides.items():
+        _check_model_fields(model, fields, fail)
+
+
+def _check_known_fields(overrides: dict, model_type: str, fail) -> None:
+    """Check 3: the active model's overrides name only its per-agent fields."""
+    known = PER_AGENT_FIELDS.get(model_type, {})
+    for field in overrides.get(model_type) or {}:
+        if field not in known:
+            raise fail(f'{model_type} has no per-agent field "{field}"')
+
+
+def _lower_edge(agent, model_type: str, field: str, bound: Bound) -> float | None:
+    """Lower edge of ``field``; GCFM ``b_max`` uses the effective ``b_min``."""
+    if model_type != "GeneralizedCentrifugalForceModel" or field != "b_max":
+        return bound.lo
+    b_min = getattr(agent, "b_min", None)
+    return b_min if _is_number(b_min) else None
+
+
+def _check_effective_values(agent, model_type: str, fail) -> None:
+    """Check 4: every resolved per-agent field lies within its bounds."""
+    bounds = FIELD_BOUNDS.get(model_type, {})
+    for field in PER_AGENT_FIELDS.get(model_type, {}):
+        if not hasattr(agent, field):
+            continue
+        bound = bounds[field]
+        lo = _lower_edge(agent, model_type, field, bound)
+        problem = _bound_problem(getattr(agent, field), bound, lo)
+        if problem:
+            raise fail(f'{model_type} {problem} "{field}"')
+
+
+def _validate_area(key, entry: dict, model_type: str, global_params) -> None:
+    from .simulation_init import create_agent_parameters
+
+    def fail(problem):
+        label = _area_label(key, entry)
+        return AgentParameterError(f'spawn area {key} "{label}": {problem}')
+
+    params = _area_params(entry)
+    overrides = params.get(OVERRIDES_KEY)
+    if overrides is not None:
+        _check_map_shape(overrides, fail)
+        _check_known_fields(overrides, model_type, fail)
+    agent = create_agent_parameters(model_type, (0.0, 0.0), params, global_params)
+    _check_effective_values(agent, model_type, fail)
+
+
+def validate_agent_parameters(data: dict, model_type: str, global_params) -> None:
+    """Reject invalid agent parameters of every spawn area before placement.
+
+    Covers explicit overrides and inherited settings alike, because each
+    per-agent field is resolved and its effective value is bounds-checked.
+    Raises :class:`AgentParameterError` naming the area, model and field.
+    """
+    for key, entry in (data.get("distributions") or {}).items():
+        _validate_area(key, entry, model_type, global_params)

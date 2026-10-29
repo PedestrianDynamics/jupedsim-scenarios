@@ -9,6 +9,7 @@ The :command:`jps-scenarios` CLI (entry point :func:`cli.main`)
 exposes the same surface for scripted pipelines.
 """
 
+from .agent_parameters import AgentParameterError, validate_agent_parameters
 from .capacity import PRACTICAL_PACKING_FACTOR, max_agents_for_distribution
 from .local import run_local
 from .runner import (
@@ -29,6 +30,7 @@ def scale_agents(scenario: Scenario, factor: float, *, mode: str = "count") -> N
 
 
 __all__ = [
+    "AgentParameterError",
     "PRACTICAL_PACKING_FACTOR",
     "CapacityError",
     "Scenario",
@@ -44,4 +46,5 @@ __all__ = [
     "run_sweep_from_factory",
     "save_scenario",
     "scale_agents",
+    "validate_agent_parameters",
 ]
