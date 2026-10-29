@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CollisionFreeSpeedModelV2. Defaults equal JuPedSim's, so no run
   changes.
 - `AgentParameterError` and `validate_agent_parameters` are exported.
+- `Scenario.overriding_areas(field)` lists the labels of spawn areas
+  whose overrides set `field` for the active model.
 
 ### Changed
 
@@ -33,11 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounds, now raise `AgentParameterError` before placement. Scripts that
   set out-of-range defaults used to run and now fail early.
 - NumPy real numbers are accepted as override values.
-
-### Fixed
-
-- Overrides were dropped before agent creation on the placement and
-  flow-spawn paths; both now apply them.
 
 ### Compatibility
 

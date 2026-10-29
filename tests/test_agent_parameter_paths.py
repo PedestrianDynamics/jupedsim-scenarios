@@ -16,7 +16,7 @@ V2 = "CollisionFreeSpeedModelV2"
 OVERRIDES = {"strength_neighbor_repulsion": 3.7, "time_gap": 0.45}
 
 
-def _scenario(journeys=True):
+def _scenario(journeys=True, variants=True):
     scenario = load_scenario(str(FIXTURES / "corridor_simple.json"))
     if not journeys:
         scenario.raw["journeys_v2"] = []
@@ -34,14 +34,20 @@ def _scenario(journeys=True):
         {"use_flow_spawning": True, "flow_start_time": 0, "flow_end_time": 2}
     )
     dists["jps-distributions_1"] = flow
+    if not variants:
+        # The placed area has no journey variants (nearest exit) while the
+        # flow area keeps its journey, so the journeys_v2 path still runs.
+        placed.pop("journey_weights", None)
     scenario.set_agent_params(0, agent_parameter_overrides={V2: OVERRIDES})
     scenario.set_agent_params(1, agent_parameter_overrides={V2: OVERRIDES})
     return scenario
 
 
-@pytest.mark.parametrize("journeys", [True, False])
-def test_placement_and_flow_resolve_identically(journeys):
-    with ScenarioRunner(_scenario(journeys), seed=42) as runner:
+@pytest.mark.parametrize(
+    ("journeys", "variants"), [(True, True), (True, False), (False, True)]
+)
+def test_placement_and_flow_resolve_identically(journeys, variants):
+    with ScenarioRunner(_scenario(journeys, variants), seed=42) as runner:
         placed = {a.id for a in runner.simulation.agents()}
         runner.run_until(4.0)
         spawned = {a.id for a in runner.simulation.agents()} - placed
