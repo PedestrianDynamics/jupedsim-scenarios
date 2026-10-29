@@ -44,6 +44,21 @@ def install_if_missing(pip_name: str, import_name: str | None = None):
         subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
     else:
         logger.info(f"{pip_name} already installed.")
+# Per-agent CollisionFreeSpeedModelV3 fields read from ``v3_<field>`` settings;
+# defaults equal JuPedSim's own dataclass defaults.
+_V3_AGENT_DEFAULTS = {
+    "time_gap": 1.0,
+    "strength_neighbor_repulsion": 8.0,
+    "range_neighbor_repulsion": 0.1,
+    "strength_geometry_repulsion": 5.0,
+    "range_geometry_repulsion": 0.02,
+    "range_x_scale": 20.0,
+    "range_y_scale": 8.0,
+    "theta_max_upper_bound": 1.57,
+    "agent_buffer": 0.0,
+}
+
+
 def create_agent_parameters(
     model_type: str,
     position: tuple,
@@ -67,6 +82,7 @@ def create_agent_parameters(
 
     if model_type == "CollisionFreeSpeedModel":
         base_params["desired_speed"] = params.get("v0", 1.2)
+        base_params["time_gap"] = getattr(global_params, "csm_time_gap", 1.0)
         return jps.CollisionFreeSpeedModelAgentParameters(**base_params)
 
     elif model_type == "CollisionFreeSpeedModelV2":
@@ -85,6 +101,8 @@ def create_agent_parameters(
     elif model_type == "CollisionFreeSpeedModelV3":
         v3_params = base_params.copy()
         v3_params["desired_speed"] = params.get("v0", 1.2)
+        for field, default in _V3_AGENT_DEFAULTS.items():
+            v3_params[field] = getattr(global_params, f"v3_{field}", default)
         return jps.CollisionFreeSpeedModelV3AgentParameters(**v3_params)
 
     elif model_type == "WarpDriverModel":
