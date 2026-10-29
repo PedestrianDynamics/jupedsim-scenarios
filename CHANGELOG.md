@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounds, now raise `AgentParameterError` before placement. Scripts that
   set out-of-range defaults used to run and now fail early.
 - NumPy real numbers are accepted as override values.
+- Intentional corrections: some library bounds are stricter than
+  JuPedSim's own checks. CollisionFreeSpeedModelV2 now needs
+  `range_neighbor_repulsion` and `range_geometry_repulsion` above 0 and
+  `strength_neighbor_repulsion` and `strength_geometry_repulsion` of at
+  least 0. SocialForceModel needs `mass`, `reaction_time` (settings key
+  `relaxation_time`) and `force_distance` (`agent_range`) above 0.
+  JuPedSim accepted these values, but they divided by zero or had no
+  physical meaning, so they are rejected rather than migrated.
 
 ### Compatibility
 
