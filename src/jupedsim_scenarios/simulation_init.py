@@ -44,6 +44,8 @@ def install_if_missing(pip_name: str, import_name: str | None = None):
         subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
     else:
         logger.info(f"{pip_name} already installed.")
+
+
 # Per-agent CollisionFreeSpeedModelV3 fields read from ``v3_<field>`` settings;
 # defaults equal JuPedSim's own dataclass defaults.
 _V3_AGENT_DEFAULTS = {
@@ -57,6 +59,23 @@ _V3_AGENT_DEFAULTS = {
     "theta_max_upper_bound": 1.57,
     "agent_buffer": 0.0,
 }
+
+# Per-agent AnticipationVelocityModel fields read from ``avm_<field>`` settings.
+_AVM_AGENT_DEFAULTS = {
+    "time_gap": 1.06,
+    "strength_neighbor_repulsion": 8.0,
+    "range_neighbor_repulsion": 0.1,
+    "wall_buffer_distance": 0.1,
+}
+
+
+def _first_set(global_params, names, default):
+    """Return the first attribute in ``names`` present on ``global_params``."""
+    for name in names:
+        value = getattr(global_params, name, None)
+        if value is not None:
+            return value
+    return default
 
 
 def create_agent_parameters(
@@ -159,17 +178,15 @@ def create_agent_parameters(
     elif model_type == "AnticipationVelocityModel":
         avm_params = base_params.copy()
         avm_params["desired_speed"] = params.get("v0", 1.2)
-        avm_params["time_gap"] = 1.06  # Default value
-        if global_params:
-            avm_params["anticipation_time"] = (
-                global_params.T if hasattr(global_params, "T") else 1.0
-            )
-            avm_params["reaction_time"] = (
-                global_params.s0 if hasattr(global_params, "s0") else 0.3
-            )
-        else:
-            avm_params["anticipation_time"] = 1.0
-            avm_params["reaction_time"] = 0.3
+        for field, default in _AVM_AGENT_DEFAULTS.items():
+            avm_params[field] = getattr(global_params, f"avm_{field}", default)
+        # JuPedSim names win over the app's T / s0 spellings.
+        avm_params["anticipation_time"] = _first_set(
+            global_params, ("anticipation_time", "T"), 1.0
+        )
+        avm_params["reaction_time"] = _first_set(
+            global_params, ("reaction_time", "s0"), 0.3
+        )
         return jps.AnticipationVelocityModelAgentParameters(**avm_params)
 
     else:

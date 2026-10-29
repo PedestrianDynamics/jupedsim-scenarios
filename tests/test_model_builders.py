@@ -140,3 +140,65 @@ def test_set_model_params_accepts_csm_and_v3_keys():
     s.set_model_params(v3_agent_buffer=0.2, csm_time_gap=1.1)
     assert s.sim_params["v3_agent_buffer"] == 0.2
     assert s.sim_params["csm_time_gap"] == 1.1
+
+
+def test_avm_agent_params_come_from_avm_keys():
+    from types import SimpleNamespace
+
+    g = SimpleNamespace(
+        avm_time_gap=1.3,
+        avm_strength_neighbor_repulsion=6.0,
+        avm_range_neighbor_repulsion=0.3,
+        avm_wall_buffer_distance=0.25,
+    )
+    agent = _agent("AnticipationVelocityModel", g)
+    assert agent.time_gap == pytest.approx(1.3)
+    assert agent.strength_neighbor_repulsion == pytest.approx(6.0)
+    assert agent.range_neighbor_repulsion == pytest.approx(0.3)
+    assert agent.wall_buffer_distance == pytest.approx(0.25)
+
+
+def test_avm_jupedsim_names_beat_app_names():
+    from types import SimpleNamespace
+
+    g = SimpleNamespace(T=1.0, s0=0.5, anticipation_time=2.0, reaction_time=0.8)
+    agent = _agent("AnticipationVelocityModel", g)
+    assert agent.anticipation_time == pytest.approx(2.0)
+    assert agent.reaction_time == pytest.approx(0.8)
+
+
+def test_avm_app_names_still_work():
+    from types import SimpleNamespace
+
+    agent = _agent("AnticipationVelocityModel", SimpleNamespace(T=1.5, s0=0.4))
+    assert agent.anticipation_time == pytest.approx(1.5)
+    assert agent.reaction_time == pytest.approx(0.4)
+
+
+def test_avm_defaults_when_unset():
+    from types import SimpleNamespace
+
+    for g in (None, SimpleNamespace()):
+        agent = _agent("AnticipationVelocityModel", g)
+        assert agent.time_gap == pytest.approx(1.06)
+        assert agent.strength_neighbor_repulsion == pytest.approx(8.0)
+        assert agent.range_neighbor_repulsion == pytest.approx(0.1)
+        assert agent.wall_buffer_distance == pytest.approx(0.1)
+        assert agent.anticipation_time == pytest.approx(1.0)
+        assert agent.reaction_time == pytest.approx(0.3)
+
+
+def test_set_model_params_anticipation_time_takes_effect():
+    from types import SimpleNamespace
+
+    s = Scenario(
+        raw={"distributions": {"d0": {"parameters": {}}}},
+        walkable_area_wkt="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
+        model_type="AnticipationVelocityModel",
+        seed=42,
+        sim_params={"max_simulation_time": 60},
+    )
+    s.set_model_params(anticipation_time=2.0, reaction_time=0.7)
+    agent = _agent("AnticipationVelocityModel", SimpleNamespace(**s.sim_params))
+    assert agent.anticipation_time == pytest.approx(2.0)
+    assert agent.reaction_time == pytest.approx(0.7)
