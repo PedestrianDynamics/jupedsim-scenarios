@@ -18,6 +18,7 @@ from shapely.geometry import Point, Polygon
 from .agent_parameters import (
     _AVM_AGENT_DEFAULTS,
     _V3_AGENT_DEFAULTS,
+    OVERRIDES_KEY,
     active_overrides,
     validate_agent_parameters,
 )
@@ -1157,6 +1158,7 @@ def _initialize_with_fallback(
                             "distribution_mode", "by_number"
                         ),
                         "percentage": params.get("percentage", None),
+                        OVERRIDES_KEY: params.get(OVERRIDES_KEY),
                         "use_flow_spawning": params.get("use_flow_spawning", False),
                         "flow_start_time": params.get("flow_start_time", 0),
                         "flow_end_time": params.get("flow_end_time", 10),
@@ -1470,6 +1472,7 @@ def _initialize_with_fallback(
             agent_params_dict = {
                 "radius": agent_radius,
                 "v0": 0.0 if use_premovement else agent_v0,
+                OVERRIDES_KEY: spawn_data["params"].get(OVERRIDES_KEY),
             }
 
             agent_params = create_agent_parameters(
@@ -1837,6 +1840,7 @@ def _process_distributions(
             "v0_std": _speed_param(params, "desired_speed_std", "v0_std", None),
             "distribution_mode": params.get("distribution_mode", "by_number"),
             "percentage": params.get("percentage", None),
+            OVERRIDES_KEY: params.get(OVERRIDES_KEY),
         }
 
         logger.debug(f"Distribution {dist_id} RAW params from JSON: {params}")
@@ -2248,7 +2252,11 @@ def _add_agents(
                                 agent_params = create_agent_parameters(
                                     model_type=model_type,
                                     position=pos,
-                                    params={"v0": actual_v0, "radius": agent_radius},
+                                    params={
+                                        "v0": actual_v0,
+                                        "radius": agent_radius,
+                                        OVERRIDES_KEY: params.get(OVERRIDES_KEY),
+                                    },
                                     global_params=global_parameters,
                                     journey_id=agent_journey_id,
                                     stage_id=agent_stage_id,
@@ -2337,6 +2345,7 @@ def _add_agents(
                     agent_params_dict = {
                         "radius": agent_radius,
                         "v0": 0.0 if use_premovement else agent_v0,
+                        OVERRIDES_KEY: params.get(OVERRIDES_KEY),
                     }
 
                     agent_params = create_agent_parameters(
