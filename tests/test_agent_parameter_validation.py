@@ -217,3 +217,44 @@ def test_flow_area_invalid_fails_before_run(tmp_path):
             model_type=V2,
         )
     assert simulation.agent_count() == 0
+
+
+def test_inherited_invalid_value_names_setting():
+    settings = SimpleNamespace(relaxation_time=0)
+    with pytest.raises(AgentParameterError) as exc_info:
+        validate_agent_parameters(_data(None), SFM, settings)
+    assert 'inherited from setting "relaxation_time"' in str(exc_info.value)
+
+
+def test_overridden_invalid_value_has_no_inherited_note():
+    data = _data({SFM: {"reaction_time": 0}})
+    with pytest.raises(AgentParameterError) as exc_info:
+        validate_agent_parameters(data, SFM, SimpleNamespace())
+    assert "inherited" not in str(exc_info.value)
+
+
+def test_inherited_note_uses_first_present_settings_key():
+    settings = SimpleNamespace(s0=0)
+    with pytest.raises(AgentParameterError) as exc_info:
+        validate_agent_parameters(_data(None), AVM, settings)
+    assert 'inherited from setting "s0"' in str(exc_info.value)
+
+
+def test_gcfm_cross_field_names_inherited_b_min():
+    settings = SimpleNamespace(b_min=0.4)
+    data = _data({GCFM: {"b_max": 0.3}})
+    with pytest.raises(AgentParameterError) as exc_info:
+        validate_agent_parameters(data, GCFM, settings)
+    msg = str(exc_info.value)
+    assert 'inherited from setting "b_min"' in msg, msg
+    assert 'inherited from setting "b_max"' not in msg, msg
+
+
+def test_gcfm_cross_field_names_inherited_b_max():
+    settings = SimpleNamespace(b_max=0.3)
+    data = _data({GCFM: {"b_min": 0.4}})
+    with pytest.raises(AgentParameterError) as exc_info:
+        validate_agent_parameters(data, GCFM, settings)
+    msg = str(exc_info.value)
+    assert 'inherited from setting "b_max"' in msg, msg
+    assert 'inherited from setting "b_min"' not in msg, msg

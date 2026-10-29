@@ -260,7 +260,37 @@ def _lower_edge(agent, model_type: str, field: str, bound: Bound) -> float | Non
     return b_min if _is_number(b_min) else None
 
 
-def _check_effective_values(agent, model_type: str, fail) -> None:
+def _inherited_setting(model_type: str, field: str, global_params) -> str:
+    """Settings key ``field`` inherits from: the first one present, else the first."""
+    keys = PER_AGENT_FIELDS[model_type][field][0]
+    return next((key for key in keys if hasattr(global_params, key)), keys[0])
+
+
+def _inherited_note(model_type, field, overridden, global_params, prefix="") -> str:
+    if field in overridden:
+        return ""
+    key = _inherited_setting(model_type, field, global_params)
+    return f' ({prefix}inherited from setting "{key}")'
+
+
+def _is_cross_field(model_type: str, field: str, value, lo, bound: Bound) -> bool:
+    """GCFM ``b_max`` fails against the effective ``b_min``, not its own bound."""
+    if lo is None or lo == bound.lo:
+        return False
+    return model_type == "GeneralizedCentrifugalForceModel" and value < lo
+
+
+def _failure_note(agent, model_type, field, overridden, global_params, bound) -> str:
+    """Name the inherited settings behind a failing field."""
+    note = _inherited_note(model_type, field, overridden, global_params)
+    value = getattr(agent, field)
+    lo = _lower_edge(agent, model_type, field, bound)
+    if _is_number(value) and _is_cross_field(model_type, field, value, lo, bound):
+        note += _inherited_note(model_type, "b_min", overridden, global_params, "b_min ")
+    return note
+
+
+def _check_effective_values(agent, model_type: str, fail, overridden, global_params) -> None:
     """Check 4: every resolved per-agent field lies within its bounds."""
     bounds = FIELD_BOUNDS.get(model_type, {})
     for field in PER_AGENT_FIELDS.get(model_type, {}):
@@ -270,7 +300,8 @@ def _check_effective_values(agent, model_type: str, fail) -> None:
         lo = _lower_edge(agent, model_type, field, bound)
         problem = _bound_problem(getattr(agent, field), bound, lo)
         if problem:
-            raise fail(f'{model_type} {problem} "{field}"')
+            note = _failure_note(agent, model_type, field, overridden, global_params, bound)
+            raise fail(f'{model_type} {problem} "{field}"{note}')
 
 
 def _validate_area(key, entry: dict, model_type: str, global_params) -> None:
@@ -286,7 +317,8 @@ def _validate_area(key, entry: dict, model_type: str, global_params) -> None:
         _check_map_shape(overrides, fail)
         _check_known_fields(overrides, model_type, fail)
     agent = create_agent_parameters(model_type, (0.0, 0.0), params, global_params)
-    _check_effective_values(agent, model_type, fail)
+    overridden = active_overrides(params, model_type)
+    _check_effective_values(agent, model_type, fail, overridden, global_params)
 
 
 def validate_agent_parameters(data: dict, model_type: str, global_params) -> None:
