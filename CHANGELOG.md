@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.8.0] — 2026-10-29
+
+### Added
+
+- **Agent-parameter keys for CollisionFreeSpeedModel (V1), V3 and
+  AnticipationVelocityModel.** Accepted in `simulationParams` and by
+  `set_model_params`. Defaults equal JuPedSim 1.4.2's own defaults.
+  - V1: `csm_time_gap` (1.0).
+  - V3: `v3_time_gap` (1.0), `v3_strength_neighbor_repulsion` (8.0),
+    `v3_range_neighbor_repulsion` (0.1), `v3_strength_geometry_repulsion`
+    (5.0), `v3_range_geometry_repulsion` (0.02), `v3_range_x_scale`
+    (20.0), `v3_range_y_scale` (8.0), `v3_theta_max_upper_bound` (1.57),
+    `v3_agent_buffer` (0.0).
+  - AVM: `avm_time_gap` (1.06), `avm_strength_neighbor_repulsion` (8.0),
+    `avm_range_neighbor_repulsion` (0.1), `avm_wall_buffer_distance`
+    (0.1).
+- `set_model_params` also accepts `reaction_time`.
+
+### Fixed
+
+- **V3 ignored all model settings.** Its agents now read the `v3_*` keys.
+- **AVM time gap was fixed at 1.06**, and the neighbor repulsion and wall
+  buffer were never set. Agents now read the `avm_*` keys.
+- **`set_model_params(anticipation_time=...)` had no effect** on AVM
+  agents. `anticipation_time` now wins over `T`, and `reaction_time`
+  over `s0` (fallbacks stay 1.0 and 0.3).
+- **CollisionFreeSpeedModel (V1) time gap was never read from settings;**
+  it now comes from `csm_time_gap`.
+
+### Compatibility
+
+- Scenarios that never set the new keys resolve identical agent
+  parameters, because the defaults equal JuPedSim's. Intentional
+  exception: scripts or configs that set AVM `anticipation_time` or
+  `reaction_time` now take effect. The `csm_time_gap`, `v3_*` and
+  `avm_*` keys are new; `set_model_params` rejected them before.
+- The shared keys (`time_gap`, `strength_neighbor_repulsion`,
+  `range_neighbor_repulsion`, `mass`) are not read when building V1, V3
+  or AVM agents. V1's model-wide neighbour repulsion still comes from
+  `strength_neighbor_repulsion` and `range_neighbor_repulsion`, as
+  before.
+
 ## [0.7.4] — 2026-10-24
 
 ### Fixed
