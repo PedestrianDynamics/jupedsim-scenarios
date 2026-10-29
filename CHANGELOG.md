@@ -40,11 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Scenarios that never set the new keys resolve identical agent
   parameters, because the defaults equal JuPedSim's. Intentional
-  exceptions: scripts or configs that set AVM `anticipation_time` or
-  `reaction_time`, or V3 values through `set_model_params`, now take
-  effect.
+  exception: scripts or configs that set AVM `anticipation_time` or
+  `reaction_time` now take effect. The `csm_time_gap`, `v3_*` and
+  `avm_*` keys are new; `set_model_params` rejected them before.
 - The shared keys (`time_gap`, `strength_neighbor_repulsion`,
-  `range_neighbor_repulsion`, `mass`) are not read for V1, V3 or AVM.
+  `range_neighbor_repulsion`, `mass`) are not read when building V1, V3
+  or AVM agents. V1's model-wide neighbour repulsion still comes from
+  `strength_neighbor_repulsion` and `range_neighbor_repulsion`, as
+  before.
 
 ## [0.7.4] — 2026-10-24
 
