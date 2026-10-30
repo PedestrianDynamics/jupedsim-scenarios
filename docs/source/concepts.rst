@@ -134,6 +134,33 @@ you save, re-load, and analyze across sessions.
 See :doc:`notebooks/howtos/10_sweep_save_load` for the
 save/reload pattern.
 
+Per-area agent parameters
+=========================
+
+A spawn area can override per-agent model fields (for example
+``time_gap`` or ``strength_neighbor_repulsion``) without touching the
+global settings. Pass ``agent_parameter_overrides`` to
+:py:meth:`~jupedsim_scenarios.Scenario.set_agent_params`, shaped
+``{model_type: {field: value}}``. Only the entry for the active model
+applies; a value of ``None`` removes a field's override, and an area
+without overrides inherits the global settings.
+
+.. code-block:: python
+
+    scenario.set_agent_params(
+        0,
+        agent_parameter_overrides={
+            "CollisionFreeSpeedModelV2": {"time_gap": 0.5},
+        },
+    )
+
+``radius`` and ``desired_speed`` are not overridable here; use their own
+keys. Initial placement and flow spawning resolve the same values. An
+invalid override, or an inherited setting outside the field's bounds,
+raises :py:class:`~jupedsim_scenarios.AgentParameterError` before any
+agent is placed. If a sweep changes a global default that a spawn area
+overrides, the sweep logs a warning, because the area keeps its value.
+
 Where each object lives
 =======================
 

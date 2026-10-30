@@ -46,7 +46,13 @@ from typing import Any, overload
 from joblib import Parallel, delayed
 
 from ._quiet import apply_quiet_from_env
-from .runner import Scenario, ScenarioResult, run_scenario
+from .runner import (
+    Scenario,
+    ScenarioResult,
+    _defer_precedence_warnings,
+    logger,
+    run_scenario,
+)
 
 
 def _run_trial(
@@ -267,6 +273,30 @@ def _iter_axis_combinations(axes: Mapping[str, Sequence[Any]]):
         yield dict(zip(names, combo, strict=True))
 
 
+_MISSING = object()
+
+
+def _changed_keys(sim_params: Mapping[str, Any], reference: Mapping[str, Any]) -> list[str]:
+    return [k for k, v in sim_params.items() if reference.get(k, _MISSING) != v]
+
+
+def _log_precedence_warnings(
+    plan_scenarios: Iterable[tuple[Scenario, Iterable[str]]],
+    collected: dict[str, str],
+) -> None:
+    """Log each changed default that overriding areas ignore, once per run.
+
+    ``collected`` holds warnings deferred from ``set_model_params`` calls;
+    each trial adds the settings keys it changed. Deduped by settings key.
+    """
+    messages = dict(collected)
+    for trial_scenario, keys in plan_scenarios:
+        for key, message in trial_scenario._precedence_warnings(keys).items():
+            messages.setdefault(key, message)
+    for message in messages.values():
+        logger.warning(message)
+
+
 def run_sweep(
     scenario: Scenario,
     *,
@@ -350,13 +380,18 @@ def run_sweep(
     # consider running multiple smaller sweeps. Lazy plan generation is
     # tracked as a follow-up.
     plan: list[tuple[int, dict[str, Any], int | None, Scenario]] = []
-    for trial_index, (combo, seed) in enumerate(
-        (c, s) for c in combinations for s in seeds_list
-    ):
-        trial_scenario = scenario.copy()
-        for name, value in combo.items():
-            apply[name](trial_scenario, value)
-        plan.append((trial_index, dict(combo), seed, trial_scenario))
+    with _defer_precedence_warnings() as collected:
+        for trial_index, (combo, seed) in enumerate(
+            (c, s) for c in combinations for s in seeds_list
+        ):
+            trial_scenario = scenario.copy()
+            for name, value in combo.items():
+                apply[name](trial_scenario, value)
+            plan.append((trial_index, dict(combo), seed, trial_scenario))
+    _log_precedence_warnings(
+        ((sc, _changed_keys(sc.sim_params, scenario.sim_params)) for *_, sc in plan),
+        collected,
+    )
 
     effective_workers = workers if workers > 0 else (os.cpu_count() or 1)
     use_parallel = effective_workers > 1 and len(plan) > 1
@@ -501,11 +536,21 @@ def run_sweep_from_factory(
     # latency tradeoff as run_sweep (see note in run_sweep); lazy
     # construction is a follow-up.
     plan: list[tuple[int, dict[str, Any], int | None, Scenario, Any]] = []
-    for trial_index, (trial_params, seed) in enumerate(
-        (t, s) for t in trials_list for s in seeds_list
-    ):
-        scenario, extras = _normalize_factory_return(factory(trial_params))
-        plan.append((trial_index, trial_params, seed, scenario, extras))
+    with _defer_precedence_warnings() as collected:
+        for trial_index, (trial_params, seed) in enumerate(
+            (t, s) for t in trials_list for s in seeds_list
+        ):
+            scenario, extras = _normalize_factory_return(factory(trial_params))
+            plan.append((trial_index, trial_params, seed, scenario, extras))
+    # No base scenario here: a settings key counts as swept when its value
+    # differs from the first trial's in any trial.
+    first = plan[0][3].sim_params
+    swept = {
+        k
+        for *_, sc, _x in plan
+        for k in (*_changed_keys(sc.sim_params, first), *_changed_keys(first, sc.sim_params))
+    }
+    _log_precedence_warnings(((sc, swept) for *_, sc, _x in plan), collected)
 
     total = len(plan)
     effective_workers = workers if workers > 0 else (os.cpu_count() or 1)

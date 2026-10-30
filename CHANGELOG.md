@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.9.0] — 2026-10-29
+
+### Added
+
+- **Per-area agent parameter overrides.** A spawn area may carry
+  `parameters.agent_parameter_overrides`, shaped
+  `{"<model_type>": {"<jupedsim_field>": <number>}}`. Absent means the
+  area inherits the global settings. Initial placement and flow
+  spawning resolve the same values.
+- `set_agent_params(agent_parameter_overrides=...)` merges overrides per
+  model and field; `None` resets a field to the global default.
+- `v2_strength_geometry_repulsion` (5.0) and
+  `v2_range_geometry_repulsion` (0.02) settings keys for
+  CollisionFreeSpeedModelV2. Defaults equal JuPedSim's, so no run
+  changes.
+- `AgentParameterError` and `validate_agent_parameters` are exported.
+- `Scenario.overriding_areas(field)` lists the labels of spawn areas
+  whose overrides set `field` for the active model.
+
+### Changed
+
+- A sweep or `set_model_params` call that changes a default which a
+  spawn area overrides now logs a warning naming the area; the area
+  keeps its override.
+- Invalid overrides, and inherited settings outside the per-field
+  bounds, now raise `AgentParameterError` before placement. Scripts that
+  set out-of-range defaults used to run and now fail early.
+- NumPy real numbers are accepted as override values.
+- Intentional corrections: some library bounds are stricter than
+  JuPedSim's own checks. CollisionFreeSpeedModelV2 now needs
+  `range_neighbor_repulsion` and `range_geometry_repulsion` above 0 and
+  `strength_neighbor_repulsion` and `strength_geometry_repulsion` of at
+  least 0. SocialForceModel needs `mass`, `reaction_time` (settings key
+  `relaxation_time`) and `force_distance` (`agent_range`) above 0.
+  JuPedSim accepted these values, but they divided by zero or had no
+  physical meaning, so they are rejected rather than migrated.
+
+### Compatibility
+
+- Scenarios without overrides resolve the same agent parameters as
+  0.8.0.
+
 ## [0.8.0] — 2026-10-29
 
 ### Added

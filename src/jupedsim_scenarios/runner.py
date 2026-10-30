@@ -24,7 +24,10 @@ Usage::
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import json
+import logging
 import os
 import pathlib
 import random
@@ -42,6 +45,14 @@ import jupedsim as jps
 import numpy as np
 from shapely import wkt
 
+from .agent_parameters import (
+    OVERRIDES_KEY,
+    AgentParameterError,
+    _is_number,
+    overriding_area_labels,
+    precedence_warning,
+    settings_key_fields,
+)
 from .capacity import max_agents_for_distribution
 from .direct_steering_runtime import (
     advance_path_target,
@@ -67,6 +78,60 @@ from .simulation_init import (
 # left to auto: long runs are subsampled so the plotly animation stays
 # responsive, short runs play every frame.
 _TARGET_ANIMATION_FRAMES = 100
+
+logger = logging.getLogger("jupedsim_scenarios")
+
+# While set, precedence warnings are collected into this dict (settings key
+# -> message) instead of logged, so a sweep can report them once per run.
+_deferred_precedence: contextvars.ContextVar[dict[str, str] | None] = (
+    contextvars.ContextVar("_deferred_precedence", default=None)
+)
+
+
+@contextlib.contextmanager
+def _defer_precedence_warnings():
+    """Collect precedence warnings instead of logging them; yields the dict."""
+    collected: dict[str, str] = {}
+    token = _deferred_precedence.set(collected)
+    try:
+        yield collected
+    finally:
+        _deferred_precedence.reset(token)
+
+
+def _check_override_map(overrides: Any) -> None:
+    """Type-check a ``set_agent_params`` override map: numbers or ``None``."""
+    if not isinstance(overrides, dict):
+        raise AgentParameterError(f"{OVERRIDES_KEY} must map model names to fields")
+    for model, fields in overrides.items():
+        if not isinstance(fields, dict):
+            raise AgentParameterError(
+                f"{OVERRIDES_KEY}[{model!r}] must map field names to numbers"
+            )
+        for name, value in fields.items():
+            if value is not None and not _is_number(value):
+                raise AgentParameterError(
+                    f"{model} needs a number or None, got {value!r}, for {name!r}"
+                )
+
+
+def _merge_override_map(params: dict[str, Any], overrides: dict) -> None:
+    """Merge per model and field; ``None`` deletes, empty maps are dropped."""
+    merged = {m: dict(f) for m, f in (params.get(OVERRIDES_KEY) or {}).items()}
+    for model, fields in overrides.items():
+        target = merged.setdefault(model, {})
+        for name, value in fields.items():
+            if value is None:
+                target.pop(name, None)
+            else:
+                # Plain Python numbers keep the scenario JSON-serializable.
+                target[name] = value.item() if isinstance(value, np.generic) else value
+        if not target:
+            del merged[model]
+    if merged:
+        params[OVERRIDES_KEY] = merged
+    else:
+        params.pop(OVERRIDES_KEY, None)
 
 # ---------------------------------------------------------------------------
 # Model factory
@@ -333,7 +398,7 @@ _AGENT_PARAM_KEYS = frozenset({
     "desired_speed", "desired_speed_std", "desired_speed_distribution",
     "v0", "v0_std", "v0_distribution",
     "use_flow_spawning", "flow_start_time", "flow_end_time",
-    "distribution_mode", "number",
+    "distribution_mode", "number", OVERRIDES_KEY,
 })
 _MODEL_PARAM_KEYS = frozenset({
     "strength_neighbor_repulsion", "range_neighbor_repulsion", "time_gap",
@@ -346,6 +411,7 @@ _MODEL_PARAM_KEYS = frozenset({
     "avm_time_gap", "avm_strength_neighbor_repulsion",
     "avm_range_neighbor_repulsion", "avm_wall_buffer_distance",
     "csm_time_gap",
+    "v2_strength_geometry_repulsion", "v2_range_geometry_repulsion",
     "v3_time_gap", "v3_strength_neighbor_repulsion",
     "v3_range_neighbor_repulsion", "v3_strength_geometry_repulsion",
     "v3_range_geometry_repulsion", "v3_range_x_scale", "v3_range_y_scale",
@@ -1046,6 +1112,31 @@ class Scenario:
                 _ensure_non_negative_number(f"model parameter {key!r}", value)
         self.sim_params.update(kwargs)
         self._simulation_params().update(kwargs)
+        self._warn_precedence(kwargs)
+
+    def overriding_areas(self, field: str) -> list[str]:
+        """Labels of spawn areas whose active-model overrides set ``field``."""
+        return overriding_area_labels(self.distributions, self.model_type, field)
+
+    def _precedence_warnings(self, settings_keys) -> dict[str, str]:
+        """Warning per changed settings key that overriding areas ignore."""
+        fields = settings_key_fields(self.model_type)
+        messages = {}
+        for key in settings_keys:
+            labels = self.overriding_areas(fields[key]) if key in fields else []
+            if labels:
+                messages[key] = precedence_warning(key, fields[key], labels)
+        return messages
+
+    def _warn_precedence(self, settings_keys) -> None:
+        messages = self._precedence_warnings(settings_keys)
+        deferred = _deferred_precedence.get()
+        if deferred is not None:
+            for key, message in messages.items():
+                deferred.setdefault(key, message)
+            return
+        for message in messages.values():
+            logger.warning(message)
 
     def set_agent_params(self, distribution_id: int | str, **kwargs):
         """Set agent parameters for a distribution.
@@ -1055,6 +1146,10 @@ class Scenario:
         ``use_flow_spawning``, ``flow_start_time``, ``flow_end_time``,
         ``distribution_mode``, ``number``.
 
+        ``agent_parameter_overrides={model: {field: value | None}}`` merges
+        per-area overrides per model and field; ``None`` resets a field to
+        the global default. Full validation runs before placement.
+
         ``v0``, ``v0_std``, and ``v0_distribution`` are accepted as
         deprecated aliases for the ``desired_speed*`` keys and emit a
         ``DeprecationWarning``. They will be removed in a future release.
@@ -1062,6 +1157,9 @@ class Scenario:
         distribution_id = self._resolve_distribution_id(distribution_id)
         _reject_unknown_kwargs("set_agent_params", kwargs, _AGENT_PARAM_KEYS)
         kwargs = self._migrate_speed_aliases(kwargs)
+        overrides = kwargs.pop(OVERRIDES_KEY, None)
+        if overrides is not None:
+            _check_override_map(overrides)
         speed_value = kwargs.get("desired_speed")
         speed_std_value = kwargs.get("desired_speed_std")
         speed_dist_value = kwargs.get("desired_speed_distribution")
@@ -1086,6 +1184,8 @@ class Scenario:
         dist = self.distributions[distribution_id]
         params = dist.setdefault("parameters", {})
         params.update(kwargs)
+        if overrides is not None:
+            _merge_override_map(params, overrides)
         # Mirror the canonical desired_speed* values into the legacy v0*
         # keys for one release so the downstream consumers in
         # simulation_init (and any third-party tooling that still reads

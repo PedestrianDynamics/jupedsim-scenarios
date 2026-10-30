@@ -15,6 +15,14 @@ import pedpy
 import shapely
 from shapely.geometry import Point, Polygon
 
+from .agent_parameters import (
+    _AVM_AGENT_DEFAULTS,
+    _V3_AGENT_DEFAULTS,
+    OVERRIDES_KEY,
+    active_overrides,
+    validate_agent_parameters,
+)
+
 logger = logging.getLogger(__name__)
 
 required_packages = [
@@ -44,29 +52,6 @@ def install_if_missing(pip_name: str, import_name: str | None = None):
         subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name])
     else:
         logger.info(f"{pip_name} already installed.")
-
-
-# Per-agent CollisionFreeSpeedModelV3 fields read from ``v3_<field>`` settings;
-# defaults equal JuPedSim's own dataclass defaults.
-_V3_AGENT_DEFAULTS = {
-    "time_gap": 1.0,
-    "strength_neighbor_repulsion": 8.0,
-    "range_neighbor_repulsion": 0.1,
-    "strength_geometry_repulsion": 5.0,
-    "range_geometry_repulsion": 0.02,
-    "range_x_scale": 20.0,
-    "range_y_scale": 8.0,
-    "theta_max_upper_bound": 1.57,
-    "agent_buffer": 0.0,
-}
-
-# Per-agent AnticipationVelocityModel fields read from ``avm_<field>`` settings.
-_AVM_AGENT_DEFAULTS = {
-    "time_gap": 1.06,
-    "strength_neighbor_repulsion": 8.0,
-    "range_neighbor_repulsion": 0.1,
-    "wall_buffer_distance": 0.1,
-}
 
 
 def _first_set(global_params, names, default):
@@ -102,6 +87,7 @@ def create_agent_parameters(
     if model_type == "CollisionFreeSpeedModel":
         base_params["desired_speed"] = params.get("v0", 1.2)
         base_params["time_gap"] = getattr(global_params, "csm_time_gap", 1.0)
+        base_params.update(active_overrides(params, model_type))
         return jps.CollisionFreeSpeedModelAgentParameters(**base_params)
 
     elif model_type == "CollisionFreeSpeedModelV2":
@@ -115,6 +101,11 @@ def create_agent_parameters(
             v2_params["range_neighbor_repulsion"] = getattr(
                 global_params, "range_neighbor_repulsion", 0.1
             )
+        for key in ("strength_geometry_repulsion", "range_geometry_repulsion"):
+            value = getattr(global_params, f"v2_{key}", None)
+            if value is not None:
+                v2_params[key] = value
+        v2_params.update(active_overrides(params, model_type))
         return jps.CollisionFreeSpeedModelV2AgentParameters(**v2_params)
 
     elif model_type == "CollisionFreeSpeedModelV3":
@@ -122,6 +113,7 @@ def create_agent_parameters(
         v3_params["desired_speed"] = params.get("v0", 1.2)
         for field, default in _V3_AGENT_DEFAULTS.items():
             v3_params[field] = getattr(global_params, f"v3_{field}", default)
+        v3_params.update(active_overrides(params, model_type))
         return jps.CollisionFreeSpeedModelV3AgentParameters(**v3_params)
 
     elif model_type == "WarpDriverModel":
@@ -144,6 +136,7 @@ def create_agent_parameters(
             gcfm_params["journey_id"] = journey_id
         if stage_id is not None:
             gcfm_params["stage_id"] = stage_id
+        gcfm_params.update(active_overrides(params, model_type))
         try:
             return jps.GeneralizedCentrifugalForceModelAgentParameters(**gcfm_params)
         except TypeError as error:
@@ -173,6 +166,7 @@ def create_agent_parameters(
             if global_params
             else 2000
         )
+        sfm_params.update(active_overrides(params, model_type))
         return jps.SocialForceModelAgentParameters(**sfm_params)
 
     elif model_type == "AnticipationVelocityModel":
@@ -187,6 +181,7 @@ def create_agent_parameters(
         avm_params["reaction_time"] = _first_set(
             global_params, ("reaction_time", "s0"), 0.3
         )
+        avm_params.update(active_overrides(params, model_type))
         return jps.AnticipationVelocityModelAgentParameters(**avm_params)
 
     else:
@@ -820,6 +815,9 @@ def initialize_simulation_from_json(
     if "exits" not in data or not data["exits"]:
         raise ValueError("At least one exit is required in JSON configuration")
 
+    # Reject invalid agent parameters before any agent is placed.
+    validate_agent_parameters(data, model_type, global_parameters)
+
     # Check what's missing and use fallback logic
     needs_fallback = False
     fallback_reasons = []
@@ -1160,6 +1158,7 @@ def _initialize_with_fallback(
                             "distribution_mode", "by_number"
                         ),
                         "percentage": params.get("percentage", None),
+                        OVERRIDES_KEY: params.get(OVERRIDES_KEY),
                         "use_flow_spawning": params.get("use_flow_spawning", False),
                         "flow_start_time": params.get("flow_start_time", 0),
                         "flow_end_time": params.get("flow_end_time", 10),
@@ -1473,6 +1472,7 @@ def _initialize_with_fallback(
             agent_params_dict = {
                 "radius": agent_radius,
                 "v0": 0.0 if use_premovement else agent_v0,
+                OVERRIDES_KEY: spawn_data["params"].get(OVERRIDES_KEY),
             }
 
             agent_params = create_agent_parameters(
@@ -1840,6 +1840,7 @@ def _process_distributions(
             "v0_std": _speed_param(params, "desired_speed_std", "v0_std", None),
             "distribution_mode": params.get("distribution_mode", "by_number"),
             "percentage": params.get("percentage", None),
+            OVERRIDES_KEY: params.get(OVERRIDES_KEY),
         }
 
         logger.debug(f"Distribution {dist_id} RAW params from JSON: {params}")
@@ -2251,7 +2252,11 @@ def _add_agents(
                                 agent_params = create_agent_parameters(
                                     model_type=model_type,
                                     position=pos,
-                                    params={"v0": actual_v0, "radius": agent_radius},
+                                    params={
+                                        "v0": actual_v0,
+                                        "radius": agent_radius,
+                                        OVERRIDES_KEY: params.get(OVERRIDES_KEY),
+                                    },
                                     global_params=global_parameters,
                                     journey_id=agent_journey_id,
                                     stage_id=agent_stage_id,
@@ -2340,6 +2345,7 @@ def _add_agents(
                     agent_params_dict = {
                         "radius": agent_radius,
                         "v0": 0.0 if use_premovement else agent_v0,
+                        OVERRIDES_KEY: params.get(OVERRIDES_KEY),
                     }
 
                     agent_params = create_agent_parameters(
