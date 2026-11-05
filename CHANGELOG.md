@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [0.9.1] — 2026-11-05
+
 ### Fixed
 
 - A start area that crosses an obstacle by a few centimetres no longer
