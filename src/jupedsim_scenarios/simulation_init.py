@@ -396,11 +396,25 @@ def _spawn_area_polygons(geometry):
     return []
 
 
+def _placeable_spawn_polygons(geometry, distance_to_polygon):
+    """Spawn polygons that can hold at least one agent.
+
+    Why: a start area that crosses an obstacle by a few centimetres leaves
+    slivers on the far side, and jupedsim raises on any piece where no point
+    keeps ``distance_to_polygon`` from the boundary, failing the whole run.
+    """
+    return [
+        polygon
+        for polygon in _spawn_area_polygons(geometry)
+        if not polygon.buffer(-distance_to_polygon).is_empty
+    ]
+
+
 def _distribute_positions_until_filled(
     spawn_area, distance_to_agents, distance_to_polygon, seed
 ):
     """Return shuffled candidate positions across all connected spawn polygons."""
-    polygons = _spawn_area_polygons(spawn_area)
+    polygons = _placeable_spawn_polygons(spawn_area, distance_to_polygon)
     if not polygons:
         return []
 
@@ -434,7 +448,7 @@ def _distribute_positions_by_number(
     spawn_area, number_of_agents, distance_to_agents, distance_to_polygon, seed
 ):
     """Place a fixed number of agents across all connected spawn polygons."""
-    polygons = _spawn_area_polygons(spawn_area)
+    polygons = _placeable_spawn_polygons(spawn_area, distance_to_polygon)
     if not polygons or number_of_agents <= 0:
         return []
 
