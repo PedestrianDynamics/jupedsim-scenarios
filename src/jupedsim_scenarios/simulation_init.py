@@ -410,26 +410,31 @@ def _placeable_spawn_polygons(geometry, distance_to_polygon):
     ]
 
 
+def _no_placeable_piece_error(distance_to_polygon):
+    return ValueError(
+        "No part of the spawn area is wide enough for one agent of radius "
+        f"{distance_to_polygon:.2f} m once obstacles are cut out. Enlarge the "
+        "start area or move it away from the obstacle."
+    )
+
+
 def _distribute_positions_until_filled(
     spawn_area, distance_to_agents, distance_to_polygon, seed
 ):
-    """Return shuffled candidate positions across all connected spawn polygons."""
-    polygons = _placeable_spawn_polygons(spawn_area, distance_to_polygon)
-    if not polygons:
+    """Return shuffled candidate positions across all connected spawn polygons.
+
+    Pieces where jupedsim cannot sample a first point are skipped. Raises
+    ``ValueError`` when the spawn area is not empty but no piece holds an agent.
+    """
+    pieces = _spawn_area_polygons(spawn_area)
+    if not pieces:
         return []
 
-    if len(polygons) == 1:
-        positions = list(
-            jps.distribute_until_filled(
-                polygon=polygons[0],
-                distance_to_agents=distance_to_agents,
-                distance_to_polygon=distance_to_polygon,
-                seed=seed,
-            )
-        )
-    else:
-        positions = []
-        for index, polygon in enumerate(polygons):
+    positions = []
+    for index, polygon in enumerate(
+        _placeable_spawn_polygons(spawn_area, distance_to_polygon)
+    ):
+        try:
             positions.extend(
                 jps.distribute_until_filled(
                     polygon=polygon,
@@ -438,6 +443,12 @@ def _distribute_positions_until_filled(
                     seed=seed + index,
                 )
             )
+        except jps.distributions.IncorrectParameterError:
+            # Why: erosion can leave a strip so thin that jupedsim's random
+            # sampling never hits it; such a piece holds no agent.
+            continue
+    if not positions:
+        raise _no_placeable_piece_error(distance_to_polygon)
 
     shuffle_rng = random.Random(seed)
     shuffle_rng.shuffle(positions)
@@ -448,9 +459,11 @@ def _distribute_positions_by_number(
     spawn_area, number_of_agents, distance_to_agents, distance_to_polygon, seed
 ):
     """Place a fixed number of agents across all connected spawn polygons."""
-    polygons = _placeable_spawn_polygons(spawn_area, distance_to_polygon)
-    if not polygons or number_of_agents <= 0:
+    if number_of_agents <= 0 or not _spawn_area_polygons(spawn_area):
         return []
+    polygons = _placeable_spawn_polygons(spawn_area, distance_to_polygon)
+    if not polygons:
+        raise _no_placeable_piece_error(distance_to_polygon)
 
     if len(polygons) == 1:
         return jps.distribute_by_number(

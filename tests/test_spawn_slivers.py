@@ -53,14 +53,36 @@ def test_until_filled_skips_sliver():
     assert all(main.contains(shapely.Point(p)) for p in positions)
 
 
-def test_only_sliver_places_nothing():
-    sliver = box(0, 0, 0.01, 5)
-    assert (
-        _distribute_positions_until_filled(
-            spawn_area=sliver,
-            distance_to_agents=2 * RADIUS,
-            distance_to_polygon=RADIUS,
-            seed=1,
-        )
-        == []
+def test_piece_too_thin_to_sample_is_skipped():
+    # Erodes to a non-empty strip, yet jupedsim cannot sample a first point
+    # in it. The large piece still fills.
+    area = shapely.union(box(0, 0, 10, 10), box(20, 0, 20.400001, 10))
+    positions = _distribute_positions_until_filled(
+        spawn_area=area,
+        distance_to_agents=2 * RADIUS,
+        distance_to_polygon=RADIUS,
+        seed=1,
     )
+    assert positions
+    assert all(p[0] <= 10 for p in positions)
+
+
+@pytest.mark.parametrize("by_number", [True, False])
+def test_area_with_no_placeable_piece_raises(by_number):
+    strip = box(0, 0, 0.1, 100)
+    with pytest.raises(ValueError, match="wide enough"):
+        if by_number:
+            _distribute_positions_by_number(
+                spawn_area=strip,
+                number_of_agents=5,
+                distance_to_agents=2 * RADIUS,
+                distance_to_polygon=RADIUS,
+                seed=1,
+            )
+        else:
+            _distribute_positions_until_filled(
+                spawn_area=strip,
+                distance_to_agents=2 * RADIUS,
+                distance_to_polygon=RADIUS,
+                seed=1,
+            )

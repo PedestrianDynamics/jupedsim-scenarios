@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A start area that crosses an obstacle by a few centimetres no longer
   fails the run. Pieces of the clipped spawn area too thin to hold one
   agent are skipped instead of raising jupedsim's "first point could not
-  be placed" error.
+  be placed" error. If no piece can hold an agent, the run stops with a
+  message saying so instead of spawning fewer agents than requested.
 
 ## [0.9.0] — 2026-10-29
 
