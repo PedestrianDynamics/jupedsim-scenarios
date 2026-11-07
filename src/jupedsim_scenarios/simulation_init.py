@@ -324,6 +324,29 @@ def _sample_agent_values(params, n_agents, rng):
     return radii, v0s
 
 
+def sample_flow_arrival(params, rng):
+    """Draw one flow arrival's ``(radius, v0)``.
+
+    With a mix of two or more groups the arrival first picks a profile from
+    one uniform draw, then samples that profile; every other area keeps the
+    flat single-agent stream.
+    """
+    groups = params.get(GROUPS_KEY)
+    if not groups or len(groups) < 2:
+        radii, v0s = _sample_agent_values(params, 1, rng)
+        return float(radii[0]), float(v0s[0])
+    u = rng.random_sample()
+    cumulative = 0.0
+    chosen = groups[-1]
+    for group in groups:
+        cumulative += group["share"] / 100
+        if u < cumulative:
+            chosen = group
+            break
+    radii, v0s = _sample_flat_values(_group_params(params, chosen), 1, rng)
+    return float(radii[0]), float(v0s[0])
+
+
 def _sample_flat_values(params, n_agents, rng):
     """Sample per-agent radius and desired-speed values from flat params.
 
