@@ -22,6 +22,7 @@ from .agent_parameters import (
     active_overrides,
     validate_agent_parameters,
 )
+from .population import attach_population_groups, validate_population
 
 logger = logging.getLogger(__name__)
 
@@ -844,6 +845,8 @@ def initialize_simulation_from_json(
 
     # Reject invalid agent parameters before any agent is placed.
     validate_agent_parameters(data, model_type, global_parameters)
+    validate_population(data)
+    attach_population_groups(data)
 
     # Check what's missing and use fallback logic
     needs_fallback = False

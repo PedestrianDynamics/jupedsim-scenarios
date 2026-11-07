@@ -12,6 +12,7 @@ exposes the same surface for scripted pipelines.
 from .agent_parameters import AgentParameterError, validate_agent_parameters
 from .capacity import PRACTICAL_PACKING_FACTOR, max_agents_for_distribution
 from .local import run_local
+from .population import PopulationMixError, load_population_presets
 from .runner import (
     CapacityError,
     Scenario,
@@ -32,12 +33,14 @@ def scale_agents(scenario: Scenario, factor: float, *, mode: str = "count") -> N
 __all__ = [
     "AgentParameterError",
     "PRACTICAL_PACKING_FACTOR",
+    "PopulationMixError",
     "CapacityError",
     "Scenario",
     "ScenarioResult",
     "ScenarioRunner",
     "SweepResult",
     "Trial",
+    "load_population_presets",
     "load_scenario",
     "max_agents_for_distribution",
     "run_local",
