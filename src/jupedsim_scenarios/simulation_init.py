@@ -308,6 +308,10 @@ def _sample_agent_values(params, n_agents, rng):
     Areas with a population mix are sampled per profile group; a mix owns
     radius and speed, so legacy fields on the area are ignored. Other areas
     are sampled flat.
+
+    Per-arrival callers (``n_agents=1`` flow spawning) must use
+    :func:`sample_flow_arrival`: with a mix, ``n_agents=1`` always yields
+    the largest-share profile.
     """
     groups = params.get(GROUPS_KEY)
     if not groups:

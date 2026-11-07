@@ -64,6 +64,7 @@ from .direct_steering_runtime import (
     set_agent_desired_speed,
     update_checkpoint_speed,
 )
+from .population import reject_mix_owned_params
 from .simulation_init import (
     _find_nearest_exit,
     _random_point_in_polygon,
@@ -1182,6 +1183,7 @@ class Scenario:
         if "number" in kwargs:
             _ensure_positive_int("number", kwargs["number"])
         dist = self.distributions[distribution_id]
+        reject_mix_owned_params(distribution_id, dist, kwargs)
         params = dist.setdefault("parameters", {})
         params.update(kwargs)
         if overrides is not None:

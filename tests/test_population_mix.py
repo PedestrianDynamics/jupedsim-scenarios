@@ -194,3 +194,46 @@ def test_initialize_raises_before_placement(tmp_path):
             SimpleNamespace(polygon=polygon),
         )
     assert simulation.agent_count() == 0
+
+
+# -- direct setters on a mix area -------------------------------------------
+
+MIX_PROFILE = {
+    "desired_speed": {"mean": 1.2, "std": None, "distribution": "constant"},
+    "radius": {"mean": 0.3, "std": None, "distribution": "constant"},
+}
+OWNED_MSG = (
+    "radius and desired speed come from population_mix; "
+    "remove the mix to set them directly"
+)
+
+
+def _mix_scenario(corridor_scenario):
+    corridor_scenario.raw["population_profiles"] = {"a": MIX_PROFILE}
+    params = corridor_scenario.distributions[KEY]["parameters"]
+    params["population_mix"] = [{"profile": "a", "share": 100}]
+    return corridor_scenario
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"radius": 0.25},
+        {"radius_std": 0.01},
+        {"radius_distribution": "gaussian"},
+        {"desired_speed": 1.0},
+        {"desired_speed_std": 0.1},
+        {"desired_speed_distribution": "gaussian"},
+        {"v0": 1.0},
+    ],
+)
+def test_set_agent_params_rejects_owned_keys_on_mix_area(corridor_scenario, kwargs):
+    scenario = _mix_scenario(corridor_scenario)
+    with pytest.raises(PopulationMixError, match=OWNED_MSG):
+        scenario.set_agent_params(0, **kwargs)
+
+
+def test_set_agent_params_other_keys_work_on_mix_area(corridor_scenario):
+    scenario = _mix_scenario(corridor_scenario)
+    scenario.set_agent_params(0, number=7)
+    assert scenario.distributions[KEY]["parameters"]["number"] == 7

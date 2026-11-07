@@ -8,7 +8,8 @@ count that would silently turn into deferred spawns is rejected up front.
 
 ``walkable_area`` is the distribution polygon minus the obstacles (the
 holes of the walkable area), in square metres. ``radius`` is the
-distribution's ``parameters.radius`` (default 0.2 m).
+distribution's ``parameters.radius`` (default 0.2 m); with a population
+mix it is the largest effective mean radius over the mix's profiles.
 
 This module is the single owner of :data:`PRACTICAL_PACKING_FACTOR`. The
 frontend (``DistributionEditorModal.js``) mirrors the constant and points
@@ -22,6 +23,9 @@ from typing import TYPE_CHECKING
 
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
+
+from .population import GROUPS_KEY, MIX_KEY, resolve_groups
+from .simulation_init import _get_max_agent_radius
 
 if TYPE_CHECKING:
     from .runner import Scenario
@@ -45,7 +49,12 @@ def distribution_walkable_area(scenario: Scenario, dist_id: str) -> float:
 def max_agents_for_distribution(scenario: Scenario, dist_id: str) -> int:
     """Largest agent count the start area ``dist_id`` accepts under the app's rule."""
     params = scenario.distributions[dist_id].get("parameters", {})
-    radius = float(params.get("radius", DEFAULT_AGENT_RADIUS) or DEFAULT_AGENT_RADIUS)
+    mix = params.get(MIX_KEY)
+    if mix:
+        groups = resolve_groups(mix, scenario.raw.get("population_profiles") or {})
+        radius = _get_max_agent_radius({GROUPS_KEY: groups})
+    else:
+        radius = float(params.get("radius", DEFAULT_AGENT_RADIUS) or DEFAULT_AGENT_RADIUS)
     area = distribution_walkable_area(scenario, dist_id)
     theoretical = area / (math.pi * radius * radius)
     return max(0, math.floor(theoretical * PRACTICAL_PACKING_FACTOR))

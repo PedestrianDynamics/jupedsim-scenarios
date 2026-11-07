@@ -152,6 +152,26 @@ def _store_params(entry: dict, params: dict) -> None:
         entry["parameters"] = params
 
 
+def resolve_groups(mix: list, profiles: dict) -> list[dict]:
+    """Resolved groups of a validated mix, in mix order."""
+    return [_group(item, profiles[item["profile"]]) for item in mix]
+
+
+_OWNED_PREFIXES = ("radius", "desired_speed", "v0")
+
+
+def reject_mix_owned_params(key: str, entry: dict, kwargs: dict) -> None:
+    """Refuse direct radius or speed settings on an area that has a mix."""
+    if not _area_params(entry).get(MIX_KEY):
+        return
+    if not any(name.startswith(_OWNED_PREFIXES) for name in kwargs):
+        return
+    raise PopulationMixError(
+        f"{_area_label(key, entry)}: radius and desired speed come from "
+        "population_mix; remove the mix to set them directly"
+    )
+
+
 def attach_population_groups(data: dict) -> None:
     """Rebuild :data:`GROUPS_KEY` on every area from its current mix."""
     profiles = data.get("population_profiles") or {}
@@ -160,6 +180,6 @@ def attach_population_groups(data: dict) -> None:
         had_stale = params.pop(GROUPS_KEY, None) is not None
         mix = params.get(MIX_KEY)
         if mix:
-            params[GROUPS_KEY] = [_group(item, profiles[item["profile"]]) for item in mix]
+            params[GROUPS_KEY] = resolve_groups(mix, profiles)
         if had_stale or mix:
             _store_params(entry, params)
