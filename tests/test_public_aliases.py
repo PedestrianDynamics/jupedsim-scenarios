@@ -25,3 +25,15 @@ def test_public_alias_matches_private_helper(public_name, private_name):
     import jupedsim_scenarios.simulation_init as sim_init
 
     assert getattr(sim_init, public_name) is getattr(sim_init, private_name)
+
+
+def test_population_names_are_exported():
+    pytest.importorskip("jupedsim")
+    import jupedsim_scenarios as js
+    import jupedsim_scenarios.population as population
+    import jupedsim_scenarios.simulation_init as sim_init
+
+    assert js.PopulationMixError is population.PopulationMixError
+    assert js.load_population_presets is population.load_population_presets
+    assert js.allocate_counts is population.allocate_counts
+    assert js.sample_flow_arrival is sim_init.sample_flow_arrival
