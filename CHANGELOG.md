@@ -5,6 +5,20 @@ All notable changes to `jupedsim-scenarios` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-11-07
+
+### Added
+
+- `spawning_info["agent_profiles"]` maps every initially placed agent to
+  the population profile it was sampled from, or `None` for an area
+  without a population mix. Both spawn paths fill it, so playback can
+  colour agents by group.
+- `sample_flow_arrival_with_profile` returns `(radius, v0, profile)` for
+  one flow arrival, so callers that spawn flow agents can record the
+  profile too. `sample_flow_arrival` and `sample_agent_values` draw the
+  same values from the same random stream as before, so trajectories do
+  not change.
+
 ## [0.10.0] — 2026-11-07
 
 ### Added

@@ -26,7 +26,7 @@ from .runner import (
     run_scenario,
     save_scenario,
 )
-from .simulation_init import sample_flow_arrival
+from .simulation_init import sample_flow_arrival, sample_flow_arrival_with_profile
 from .sweep import SweepResult, Trial, run_sweep, run_sweep_from_factory
 
 
@@ -54,6 +54,7 @@ __all__ = [
     "run_sweep",
     "run_sweep_from_factory",
     "sample_flow_arrival",
+    "sample_flow_arrival_with_profile",
     "save_scenario",
     "scale_agents",
     "validate_agent_parameters",
