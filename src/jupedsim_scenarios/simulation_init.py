@@ -671,7 +671,7 @@ def dry_run_static_placement(
 
     # Resolve the area's population groups on a copy so the caller's
     # scenario data does not gain derived state.
-    area_view = {
+    area_view: dict = {
         "population_profiles": data.get("population_profiles"),
         "distributions": {dist_id: copy.deepcopy(data["distributions"][dist_id])},
     }

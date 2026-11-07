@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 from importlib import resources
+from typing import TypeGuard
 
 from .agent_parameters import _area_label, _area_params, _is_number
 
@@ -45,7 +46,7 @@ def allocate_counts(shares: list[int], n: int) -> list[int]:
     return counts
 
 
-def _is_whole_share(share) -> bool:
+def _is_whole_share(share) -> TypeGuard[int]:
     return isinstance(share, int) and not isinstance(share, bool)
 
 
@@ -88,8 +89,8 @@ def _check_mix(label: str, mix, profiles: dict) -> None:
         )
     seen: set = set()
     total = 0
-    for item in mix:
-        item = item if isinstance(item, dict) else {}
+    for raw in mix:
+        item: dict = raw if isinstance(raw, dict) else {}
         profile_id, share = item.get("profile"), item.get("share")
         if not _is_whole_share(share) or share < 1:
             raise PopulationMixError(
