@@ -8,12 +8,14 @@ from types import SimpleNamespace
 
 import jupedsim as jps
 import numpy as np
+import pytest
 import shapely
 
 from jupedsim_scenarios.population import GROUPS_KEY, allocate_counts
 from jupedsim_scenarios.simulation_init import (
     _get_max_agent_radius,
     _sample_agent_values,
+    dry_run_static_placement,
     initialize_simulation_from_json,
 )
 
@@ -159,3 +161,52 @@ def test_sampling_statistics_match_profile():
     _, v0s = _sample_agent_values(params, n, np.random.RandomState(0))
     assert abs(v0s.mean() - mean) < 4 * std / np.sqrt(n)
     assert abs(v0s.std() - std) < 4 * std / np.sqrt(2 * n)
+
+
+def _large_radius_mix_config(tmp_path, number):
+    data = json.loads((FIXTURES / "corridor_simple.json").read_text())
+
+    def profile(radius):
+        return {
+            "desired_speed": {"mean": 1.2, "std": None, "distribution": "constant"},
+            "radius": {"mean": radius, "std": None, "distribution": "constant"},
+        }
+
+    data["population_profiles"] = {"big": profile(0.4), "small": profile(0.15)}
+    params = data["distributions"][KEY]["parameters"]
+    params["number"] = number
+    params["population_mix"] = [
+        {"profile": "big", "share": 50},
+        {"profile": "small", "share": 50},
+    ]
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(data))
+    return data, path
+
+
+def _real_run_outcome(data, path):
+    polygon = shapely.from_wkt(data["walkable_area_wkt"])
+    simulation = jps.Simulation(model=jps.CollisionFreeSpeedModel(), geometry=polygon)
+    try:
+        initialize_simulation_from_json(str(path), simulation, SimpleNamespace(polygon=polygon))
+    except Exception:
+        return "rejected"
+    return "accepted"
+
+
+def _dry_run_outcome(data, number):
+    polygon = shapely.from_wkt(data["walkable_area_wkt"])
+    try:
+        dry_run_static_placement(data, polygon, KEY, number, 42)
+    except ValueError:
+        return "rejected"
+    return "accepted"
+
+
+@pytest.mark.parametrize("number,expected", [(10, "accepted"), (30, "rejected")])
+def test_dry_run_matches_real_run_for_large_radius_mix(tmp_path, number, expected):
+    data, path = _large_radius_mix_config(tmp_path, number)
+    before = json.dumps(data, sort_keys=True)
+    assert _dry_run_outcome(data, number) == expected
+    assert json.dumps(data, sort_keys=True) == before
+    assert _real_run_outcome(data, path) == expected

@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import json
 import logging
@@ -641,7 +642,15 @@ def dry_run_static_placement(
     """
     from shapely.ops import unary_union
 
-    dist_data = data["distributions"][dist_id]
+    # Resolve the area's population groups on a copy so the caller's
+    # scenario data does not gain derived state.
+    area_view = {
+        "population_profiles": data.get("population_profiles"),
+        "distributions": {dist_id: copy.deepcopy(data["distributions"][dist_id])},
+    }
+    validate_population(area_view)
+    attach_population_groups(area_view)
+    dist_data = area_view["distributions"][dist_id]
     params = dist_data.get("parameters", {})
     if isinstance(params, str):
         params = json.loads(params)
