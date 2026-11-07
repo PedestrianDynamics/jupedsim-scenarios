@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "source": {
+    "document": "RiMEA 4.0.0",
+    "figure": "Abb. 3",
+    "section": "3.2.2.2",
+    "population_section": "3.2.4",
+    "underlying": "Weidmann 1992"
+  },
+  "profiles": {
+    "general_population": {
+      "preset": "rimea4/general_population@1",
+      "age_min": 10,
+      "age_max": 85,
+      "age_weighting": "rimea_standard_population",
+      "desired_speed": {
+        "mean": 1.34,
+        "std": 0.34,
+        "distribution": "gaussian"
+      },
+      "radius": {
+        "mean": 0.2,
+        "std": null,
+        "distribution": "constant"
+      },
+      "provenance": {
+        "desired_speed": "rimea4_abb3_derived",
+        "age_range": "rimea4_s324",
+        "radius": "app_default_radius",
+        "distribution": "app_choice_gaussian"
+      }
+    },
+    "children": {
+      "preset": "rimea4/children@1",
+      "age_min": 5,
+      "age_max": 12,
+      "age_weighting": "uniform",
+      "desired_speed": {
+        "mean": 1.05,
+        "std": 0.27,
+        "distribution": "gaussian"
+      },
+      "radius": {
+        "mean": 0.2,
+        "std": null,
+        "distribution": "constant"
+      },
+      "provenance": {
+        "desired_speed": "rimea4_abb3_derived",
+        "age_range": "app_choice_band",
+        "radius": "app_default_radius",
+        "distribution": "app_choice_gaussian"
+      }
+    },
+    "young_people": {
+      "preset": "rimea4/young_people@1",
+      "age_min": 13,
+      "age_max": 29,
+      "age_weighting": "uniform",
+      "desired_speed": {
+        "mean": 1.55,
+        "std": 0.31,
+        "distribution": "gaussian"
+      },
+      "radius": {
+        "mean": 0.2,
+        "std": null,
+        "distribution": "constant"
+      },
+      "provenance": {
+        "desired_speed": "rimea4_abb3_derived",
+        "age_range": "app_choice_band",
+        "radius": "app_default_radius",
+        "distribution": "app_choice_gaussian"
+      }
+    },
+    "adults": {
+      "preset": "rimea4/adults@1",
+      "age_min": 30,
+      "age_max": 59,
+      "age_weighting": "uniform",
+      "desired_speed": {
+        "mean": 1.44,
+        "std": 0.29,
+        "distribution": "gaussian"
+      },
+      "radius": {
+        "mean": 0.2,
+        "std": null,
+        "distribution": "constant"
+      },
+      "provenance": {
+        "desired_speed": "rimea4_abb3_derived",
+        "age_range": "app_choice_band",
+        "radius": "app_default_radius",
+        "distribution": "app_choice_gaussian"
+      }
+    },
+    "older_adults": {
+      "preset": "rimea4/older_adults@1",
+      "age_min": 60,
+      "age_max": 80,
+      "age_weighting": "uniform",
+      "desired_speed": {
+        "mean": 1.04,
+        "std": 0.27,
+        "distribution": "gaussian"
+      },
+      "radius": {
+        "mean": 0.2,
+        "std": null,
+        "distribution": "constant"
+      },
+      "provenance": {
+        "desired_speed": "rimea4_abb3_derived",
+        "age_range": "app_choice_band",
+        "radius": "app_default_radius",
+        "distribution": "app_choice_gaussian"
+      }
+    }
+  }
+}

@@ -5,7 +5,28 @@ All notable changes to `jupedsim-scenarios` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.10.0] — 2026-11-07
+
+### Added
+
+- **Population profiles.** A scenario may carry a top-level
+  `population_profiles` map (`{id: {desired_speed, radius, ...}}`) and a
+  spawn area may carry `parameters.population_mix`, a list of
+  `{"profile": id, "share": int}` with integer shares of at least 1
+  totalling 100. When a mix is present it exclusively owns radius and
+  desired speed for the area. Fixed-count areas assign groups by
+  largest-remainder counts shuffled with the seed; flow areas draw one
+  seeded profile per arrival. Areas without a mix behave as before.
+  Placement spacing uses twice the largest effective mean radius, a
+  heuristic that does not guarantee non-overlap.
+- Five bundled presets (`general_population`, `children`,
+  `young_people`, `adults`, `older_adults`) with desired speeds derived
+  from RiMEA 4.0.0 section 3.2.2.2 Abb. 3 (after Weidmann 1992), read
+  from the figure. Age bands, the constant radius of 0.2 m, the Gaussian
+  shape and the derivation method are application choices. The derived
+  values were reviewed by the maintainer on 2026-11-07.
+- `PopulationMixError`, `load_population_presets`, `allocate_counts` and
+  `sample_flow_arrival` are exported.
 
 ## [0.9.1] — 2026-11-05
 

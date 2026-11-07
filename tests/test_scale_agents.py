@@ -29,6 +29,19 @@ def test_max_agents_matches_app_rule(corridor_scenario):
     assert max_agents_for_distribution(corridor_scenario, DIST) == 141
 
 
+def test_max_agents_uses_mix_radius_not_stale_legacy_radius(corridor_scenario):
+    profile = {
+        "desired_speed": {"mean": 1.2, "std": None, "distribution": "constant"},
+        "radius": {"mean": 0.3, "std": None, "distribution": "constant"},
+    }
+    corridor_scenario.raw["population_profiles"] = {"a": profile}
+    params = _params(corridor_scenario)
+    params["radius"] = 0.1
+    params["population_mix"] = [{"profile": "a", "share": 100}]
+    # 20 m2 at radius 0.3: floor(20 / (pi * 0.09) * 0.5) = 35
+    assert max_agents_for_distribution(corridor_scenario, DIST) == 35
+
+
 def test_max_agents_subtracts_obstacles(corridor_scenario):
     corridor_scenario.walkable_area_wkt = (
         "POLYGON ((0 0, 20 0, 20 5, 0 5, 0 0), (1 1, 3 1, 3 3, 1 3, 1 1))"

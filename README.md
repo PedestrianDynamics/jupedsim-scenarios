@@ -128,6 +128,50 @@ For deeper coverage see the how-to notebooks:
 - [`10_sweep_save_load`](examples/howtos/10_sweep_save_load.ipynb) — `SweepResult.save` / `load`
 - [`11_sweep_via_copy`](examples/howtos/11_sweep_via_copy.ipynb) — factory sweeps and `Scenario.copy()`
 
+## Population profiles
+
+A scenario can describe a mixed crowd. Profiles are declared once at the
+top level and referenced by share from each spawn area:
+
+```json
+{
+  "population_profiles": {
+    "adults": {
+      "desired_speed": {"mean": 1.44, "std": 0.29, "distribution": "gaussian"},
+      "radius": {"mean": 0.2, "std": null, "distribution": "constant"}
+    },
+    "older_adults": {
+      "desired_speed": {"mean": 1.04, "std": 0.27, "distribution": "gaussian"},
+      "radius": {"mean": 0.2, "std": null, "distribution": "constant"}
+    }
+  },
+  "distributions": {
+    "start": {"parameters": {"population_mix": [
+      {"profile": "adults", "share": 70},
+      {"profile": "older_adults", "share": 30}
+    ]}}
+  }
+}
+```
+
+Shares are integers of at least 1 and total 100. When a mix is present it
+exclusively owns radius and desired speed for that area; areas without a
+mix behave as before. With two or more groups, fixed-count areas assign
+agents by largest-remainder counts shuffled with the seed, and flow areas
+draw one seeded profile per arrival. Placement spacing uses twice the
+largest effective mean radius, a heuristic that does not guarantee
+non-overlap. Invalid mixes raise `PopulationMixError`.
+
+`load_population_presets()` returns five bundled presets: `general_population`
+(ages 10-85), `children` (5-12), `young_people` (13-29), `adults` (30-59) and
+`older_adults` (60-80), all with radius 0.2 m. `general_population` is
+weighted by the RiMEA standard population (age N(50, 20) truncated to
+10-85); the other bands are weighted uniformly. Desired speeds are derived from
+RiMEA 4.0.0 section 3.2.2.2 Abb. 3 (after Weidmann 1992) and were **read from
+a figure**. The age bands, the radius, the Gaussian shape and the derivation
+method are application choices. The values were reviewed by the maintainer on 2026-11-07. Method and provenance
+are in `scripts/population_presets/README.md`.
+
 ## Visualisation
 
 Visualisation needs the optional `viz` extra (matplotlib + plotly):
@@ -181,7 +225,7 @@ sphinx-build -b html docs/source docs/build/html
 
 ## Roadmap
 
-Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.9.1**.
+Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.10.0**.
 
 On the table for future releases:
 
