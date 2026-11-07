@@ -313,11 +313,23 @@ def _sample_agent_values(params, n_agents, rng):
     :func:`sample_flow_arrival`: with a mix, ``n_agents=1`` always yields
     the largest-share profile.
     """
+    radii, v0s, _ = _sample_agent_values_with_profiles(params, n_agents, rng)
+    return radii, v0s
+
+
+def _sample_agent_values_with_profiles(params, n_agents, rng):
+    """Like :func:`_sample_agent_values`, plus each agent's profile id.
+
+    The profile list holds ``None`` for areas without a population mix.
+    Draws from ``rng`` exactly as :func:`_sample_agent_values` does.
+    """
     groups = params.get(GROUPS_KEY)
     if not groups:
-        return _sample_flat_values(params, n_agents, rng)
+        radii, v0s = _sample_flat_values(params, n_agents, rng)
+        return radii, v0s, [None] * n_agents
     if len(groups) == 1:
-        return _sample_flat_values(_group_params(params, groups[0]), n_agents, rng)
+        radii, v0s = _sample_flat_values(_group_params(params, groups[0]), n_agents, rng)
+        return radii, v0s, [groups[0].get("profile")] * n_agents
     counts = allocate_counts([g["share"] for g in groups], n_agents)
     labels = rng.permutation(np.repeat(np.arange(len(groups)), counts))
     radii, v0s = np.empty(n_agents), np.empty(n_agents)
@@ -325,7 +337,7 @@ def _sample_agent_values(params, n_agents, rng):
         idx = np.flatnonzero(labels == gi)
         r, v = _sample_flat_values(_group_params(params, group), len(idx), rng)
         radii[idx], v0s[idx] = r, v
-    return radii, v0s
+    return radii, v0s, [groups[gi].get("profile") for gi in labels]
 
 
 def sample_flow_arrival(params, rng):
@@ -335,10 +347,21 @@ def sample_flow_arrival(params, rng):
     one uniform draw, then samples that profile; every other area keeps the
     flat single-agent stream.
     """
+    radius, v0, _ = sample_flow_arrival_with_profile(params, rng)
+    return radius, v0
+
+
+def sample_flow_arrival_with_profile(params, rng):
+    """Draw one flow arrival's ``(radius, v0, profile)``.
+
+    ``profile`` is the population profile id, or ``None`` for an area
+    without a population mix. Draws from ``rng`` exactly as
+    :func:`sample_flow_arrival` does.
+    """
     groups = params.get(GROUPS_KEY)
     if not groups or len(groups) < 2:
-        radii, v0s = _sample_agent_values(params, 1, rng)
-        return float(radii[0]), float(v0s[0])
+        radii, v0s, profiles = _sample_agent_values_with_profiles(params, 1, rng)
+        return float(radii[0]), float(v0s[0]), profiles[0]
     u = rng.random_sample()
     cumulative = 0.0
     chosen = groups[-1]
@@ -348,7 +371,7 @@ def sample_flow_arrival(params, rng):
             chosen = group
             break
     radii, v0s = _sample_flat_values(_group_params(params, chosen), 1, rng)
-    return float(radii[0]), float(v0s[0])
+    return float(radii[0]), float(v0s[0]), chosen.get("profile")
 
 
 def _sample_flat_values(params, n_agents, rng):
@@ -1360,6 +1383,7 @@ def _initialize_with_fallback(
 
     all_positions = []
     agent_radii = {}
+    agent_profiles: dict[int, str | None] = {}
     agent_counter = 0
     fallback_agent_wait_info = {}
 
@@ -1549,7 +1573,7 @@ def _initialize_with_fallback(
             )
         # Sample per-agent radius and v0
         rng = np.random.RandomState(seed + spawn_data["index"])
-        sampled_radii, sampled_v0s = _sample_agent_values(
+        sampled_radii, sampled_v0s, sampled_profiles = _sample_agent_values_with_profiles(
             spawn_data["params"], len(positions), rng
         )
 
@@ -1616,6 +1640,7 @@ def _initialize_with_fallback(
             agent_id = simulation.add_agent(agent_params)
             all_positions.append(pos)
             agent_radii[agent_id] = agent_radius
+            agent_profiles[agent_id] = sampled_profiles[idx]
 
             # Build DS wait info — chain through checkpoints (if any) then exit.
             base_seed = seed + idx * 9973
@@ -1675,6 +1700,7 @@ def _initialize_with_fallback(
         # Fallback path routes every agent to its nearest exit via direct
         # steering, so there are no v2 journeys to attribute.
         "agent_journeys": {},
+        "agent_profiles": agent_profiles,
         "direct_steering_info": direct_steering_info,
         "global_ds_journey_id": global_ds_journey_id,
         "global_ds_stage_id": global_ds_stage_id,
@@ -2100,6 +2126,9 @@ def _add_agents(
     # trajectory only stores positions, so the per-agent journey is otherwise
     # unrecoverable downstream (dot coloring, journey-aware counts).
     agent_journeys: dict[int, str | None] = {}
+    # agent_id -> population profile id it was sampled from, or None for areas
+    # without a population mix (playback colours agents by group).
+    agent_profiles: dict[int, str | None] = {}
 
     # Build exit_geometries keyed by exit_id for nearest-exit lookup
     exit_geometries = {}
@@ -2292,8 +2321,8 @@ def _add_agents(
                 )
             # Sample per-agent radius and v0
             rng = np.random.RandomState(seed + zlib.crc32(dist_key.encode()) % (2**31))
-            sampled_radii, sampled_v0s = _sample_agent_values(
-                params, len(positions), rng
+            sampled_radii, sampled_v0s, sampled_profiles = (
+                _sample_agent_values_with_profiles(params, len(positions), rng)
             )
 
             if distribution_journeys:
@@ -2394,6 +2423,7 @@ def _add_agents(
 
                                 agent_id = simulation.add_agent(agent_params)
                                 agent_radii[agent_id] = agent_radius
+                                agent_profiles[agent_id] = sampled_profiles[agent_index]
                                 # journey_key is the original v2 journey id even
                                 # when direct steering overrides the compiled
                                 # journey object below — record the intended one.
@@ -2489,6 +2519,7 @@ def _add_agents(
 
                     agent_id = simulation.add_agent(agent_params)
                     agent_radii[agent_id] = agent_radius
+                    agent_profiles[agent_id] = sampled_profiles[idx]
                     # Nearest-exit direct steering: no v2 journey to attribute.
                     agent_journeys[agent_id] = None
 
@@ -2553,6 +2584,7 @@ def _add_agents(
         "premovement_times": premovement_times,
         "agent_wait_info": agent_wait_info,
         "agent_journeys": agent_journeys,
+        "agent_profiles": agent_profiles,
         "transitions": [],
         "waypoint_routing": {},
         "global_ds_journey_id": global_ds_journey_id,
