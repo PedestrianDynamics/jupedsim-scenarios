@@ -5,7 +5,7 @@ All notable changes to `jupedsim-scenarios` are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.10.0] — 2026-11-07
 
 ### Added
 
@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from RiMEA 4.0.0 section 3.2.2.2 Abb. 3 (after Weidmann 1992), read
   from the figure. Age bands, the constant radius of 0.2 m, the Gaussian
   shape and the derivation method are application choices. The derived
-  values are pending maintainer review.
+  values were reviewed by the maintainer on 2026-11-07.
 - `PopulationMixError`, `load_population_presets`, `allocate_counts` and
   `sample_flow_arrival` are exported.
 

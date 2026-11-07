@@ -169,7 +169,7 @@ weighted by the RiMEA standard population (age N(50, 20) truncated to
 10-85); the other bands are weighted uniformly. Desired speeds are derived from
 RiMEA 4.0.0 section 3.2.2.2 Abb. 3 (after Weidmann 1992) and were **read from
 a figure**. The age bands, the radius, the Gaussian shape and the derivation
-method are application choices. The values are pending maintainer review. Method and provenance
+method are application choices. The values were reviewed by the maintainer on 2026-11-07. Method and provenance
 are in `scripts/population_presets/README.md`.
 
 ## Visualisation
@@ -225,7 +225,7 @@ sphinx-build -b html docs/source docs/build/html
 
 ## Roadmap
 
-Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.9.1**.
+Shipped: see [CHANGELOG.md](CHANGELOG.md). Current release: **0.10.0**.
 
 On the table for future releases:
 

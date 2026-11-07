@@ -26,4 +26,4 @@ ages 10-85), the Gaussian shape, and the constant radius of 0.2 m.
 
 `abb3_overlay.png` embeds a crop of the axes region only.
 
-Review status: pending maintainer review
+Review status: approved by the maintainer on 2026-11-07 (digitisation checked against the overlay)
