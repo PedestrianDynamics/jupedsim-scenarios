@@ -51,7 +51,7 @@ Issues = "https://github.com/PedestrianDynamics/jupedsim-scenarios/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-jupedsim_scenarios = ["py.typed"]
+jupedsim_scenarios = ["py.typed", "assets/*.json"]
 
 [tool.ruff]
 line-length = 100
