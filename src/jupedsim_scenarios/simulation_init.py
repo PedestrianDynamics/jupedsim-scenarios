@@ -22,7 +22,12 @@ from .agent_parameters import (
     active_overrides,
     validate_agent_parameters,
 )
-from .population import attach_population_groups, validate_population
+from .population import (
+    GROUPS_KEY,
+    allocate_counts,
+    attach_population_groups,
+    validate_population,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +220,17 @@ def _get_max_agent_radius(params):
     packings the editor accepts. Initial micro-overlaps from sampled
     radii above the mean are handled by the simulator's dynamics phase.
     """
+    groups = params.get(GROUPS_KEY)
+    if groups:
+        return max(_effective_mean_radius(g) for g in groups)
     return params.get("radius", 0.2)
+
+
+def _effective_mean_radius(group):
+    """The mean radius the sampler uses for a population group."""
+    if group.get("radius_distribution") == "gaussian" and group.get("radius_std"):
+        return max(0.1, min(1.0, group["radius"]))
+    return group["radius"]
 
 
 def _get_distribution_mode_and_count(params):
@@ -261,8 +276,55 @@ def _speed_param(params: dict, canonical: str, legacy: str, default: Any) -> Any
     return default if value is None else value
 
 
+_SPEED_ALIASES = (
+    "desired_speed",
+    "desired_speed_distribution",
+    "desired_speed_std",
+)
+
+
+def _group_params(params, group):
+    """Return ``params`` with radius and speed taken from a population group.
+
+    The speed aliases are dropped so the group's ``v0`` is not shadowed by a
+    legacy ``desired_speed`` on the same area.
+    """
+    merged = {k: v for k, v in params.items() if k not in _SPEED_ALIASES}
+    merged.update(
+        radius=group["radius"],
+        radius_distribution=group["radius_distribution"],
+        radius_std=group["radius_std"],
+        v0=group["v0"],
+        v0_distribution=group["v0_distribution"],
+        v0_std=group["v0_std"],
+    )
+    return merged
+
+
 def _sample_agent_values(params, n_agents, rng):
     """Sample per-agent radius and desired-speed values.
+
+    Areas with a population mix are sampled per profile group; a mix owns
+    radius and speed, so legacy fields on the area are ignored. Other areas
+    are sampled flat.
+    """
+    groups = params.get(GROUPS_KEY)
+    if not groups:
+        return _sample_flat_values(params, n_agents, rng)
+    if len(groups) == 1:
+        return _sample_flat_values(_group_params(params, groups[0]), n_agents, rng)
+    counts = allocate_counts([g["share"] for g in groups], n_agents)
+    labels = rng.permutation(np.repeat(np.arange(len(groups)), counts))
+    radii, v0s = np.empty(n_agents), np.empty(n_agents)
+    for gi, group in enumerate(groups):
+        idx = np.flatnonzero(labels == gi)
+        r, v = _sample_flat_values(_group_params(params, group), len(idx), rng)
+        radii[idx], v0s[idx] = r, v
+    return radii, v0s
+
+
+def _sample_flat_values(params, n_agents, rng):
+    """Sample per-agent radius and desired-speed values from flat params.
 
     For Gaussian distributions the *mean* is clamped to a safe range
     BEFORE sampling and the samples themselves are then clipped — without
@@ -1189,6 +1251,7 @@ def _initialize_with_fallback(
                         ),
                         "percentage": params.get("percentage", None),
                         OVERRIDES_KEY: params.get(OVERRIDES_KEY),
+                        GROUPS_KEY: params.get(GROUPS_KEY),
                         "use_flow_spawning": params.get("use_flow_spawning", False),
                         "flow_start_time": params.get("flow_start_time", 0),
                         "flow_end_time": params.get("flow_end_time", 10),
@@ -1871,6 +1934,7 @@ def _process_distributions(
             "distribution_mode": params.get("distribution_mode", "by_number"),
             "percentage": params.get("percentage", None),
             OVERRIDES_KEY: params.get(OVERRIDES_KEY),
+            GROUPS_KEY: params.get(GROUPS_KEY),
         }
 
         logger.debug(f"Distribution {dist_id} RAW params from JSON: {params}")
