@@ -39,7 +39,7 @@ BANDS = {
 
 
 def read_table(csv_path):
-    """age -> (v_mean, sigma) with sigma = (v_plus - v_minus) / 2; ages above 80 hold age 80."""
+    """age -> (v_mean, sigma) with sigma = (v_plus - v_minus) / 2."""
     table = {}
     with open(csv_path, newline="") as fh:
         for row in csv.DictReader(fh):
@@ -65,6 +65,7 @@ def _weights(kind, ages):
 
 
 def build_presets(csv_path):
+    """Presets from the digitised table; ages above the last digitised age hold its value."""
     table = read_table(csv_path)
     for age in range(LAST_DIGITISED_AGE + 1, 86):
         table[age] = table[LAST_DIGITISED_AGE]

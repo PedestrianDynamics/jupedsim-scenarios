@@ -164,10 +164,12 @@ non-overlap. Invalid mixes raise `PopulationMixError`.
 
 `load_population_presets()` returns five bundled presets: `general_population`
 (ages 10-85), `children` (5-12), `young_people` (13-29), `adults` (30-59) and
-`older_adults` (60-80), all with radius 0.2 m. Desired speeds are derived from
+`older_adults` (60-80), all with radius 0.2 m. `general_population` is
+weighted by the RiMEA standard population (age N(50, 20) truncated to
+10-85); the other bands are weighted uniformly. Desired speeds are derived from
 RiMEA 4.0.0 section 3.2.2.2 Abb. 3 (after Weidmann 1992) and were **read from
 a figure**. The age bands, the radius, the Gaussian shape and the derivation
-method are application choices. Values pending review; method and provenance
+method are application choices. The values are pending maintainer review. Method and provenance
 are in `scripts/population_presets/README.md`.
 
 ## Visualisation
